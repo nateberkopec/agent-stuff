@@ -52,11 +52,11 @@ Pi extensions live in [`extensions`](extensions):
 - [`goal.ts`](extensions/goal.ts) - `/goal` long-running objective mode with automatic continuation and the `get_goal`, `create_goal`, and `update_goal` tools.
 - [`unified-edit.ts`](extensions/unified-edit.ts) - Replaces `edit` with a single text payload supporting marked row edit scripts and Codex-style patches with preflight validation.
 - [`no-sleep.ts`](extensions/no-sleep.ts) - `/no-sleep` macOS `caffeinate` integration to prevent sleep while an agent or session is active.
-- [`notify.ts`](extensions/notify.ts) - Native terminal desktop notification when the agent finishes and is ready for input.
+- [`notify.ts`](extensions/notify.ts) - Native terminal desktop notification once the session and its subagents are ready for input.
 - [`prompt-editor.ts`](extensions/prompt-editor.ts) - `/mode`, `ctrl+shift+m`, and `ctrl+space` prompt-mode selector with persistence and shortcuts.
 - [`review.ts`](extensions/review.ts) - `/review` and `/end-review` for reviewing uncommitted changes, branches, commits, PRs, or folder snapshots.
 - [`session-breakdown.ts`](extensions/session-breakdown.ts) - `/session-breakdown` TUI for 7/30/90-day session usage, token, model, and cost analysis.
-- [`split-fork.ts`](extensions/split-fork.ts) - `/split-fork` to branch the current session into a new Pi process in a right-hand Ghostty split.
+- [`split-fork.ts`](extensions/split-fork.ts) - `/window-fork` to branch the current session into a new Pi process in a new Ghostty window.
 - [`subagent.ts`](extensions/subagent.ts) - Serial `subagent` tool that runs one observable Pi child at a time in tmux; attach with the printed `pi --attach-subagent …` command.
 - [`todos.ts`](extensions/todos.ts) - `/todos` TUI plus `todo` tool for file-backed tasks in `.pi/todos` or `PI_TODO_PATH`.
 - [`trust-github-repos.ts`](extensions/trust-github-repos.ts) - Automatically trusts GitHub checkouts owned by `earendil-works` or `mitsuhiko`.

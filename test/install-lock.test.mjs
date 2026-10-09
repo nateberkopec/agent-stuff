@@ -16,7 +16,7 @@ test("complete peer lock has verified bytes and preserves production diff", () =
   for (const [path, entry] of Object.entries(lock.packages)) {
     if (!path) continue;
     assert.match(entry.integrity ?? "", /^sha(?:256|384|512)-/);
-    if (path.includes("@earendil-works/pi-")) assert.equal(entry.version, "1.1.0");
+    if (/node_modules\/@earendil-works\/pi-[^/]+$/.test(path)) assert.equal(entry.version, "1.1.0");
   }
 });
 test("Aube frozen production install", { skip: process.env.AUBE_LOCK_INTEGRATION !== "1" }, () => {

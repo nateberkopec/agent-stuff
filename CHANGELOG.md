@@ -2,6 +2,12 @@
 
 All notable changes to agent-stuff are documented here.
 
+## 1.6.1 (dotfiles fork)
+
+* Replaced stale Pi 0.80.3 peer lock records with a complete, integrity-verified Pi 1.1.0 tree for paranoid Aube frozen production installs.
+* Kept runtime extension files, peer declarations, and production diff@8.0.3 unchanged.
+* Added artifact and opt-in frozen-install regression tests.
+
 ## Unreleased
 
 * Fixed the notify extension leaking OSC 8 hyperlink text into fullscreen prompt editors.

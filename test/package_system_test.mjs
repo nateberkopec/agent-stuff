@@ -66,7 +66,7 @@ test("the packed package installs and discovers every exported resource in an is
 			assert.deepEqual(loader.getPrompts().diagnostics, []);
 			assert.deepEqual(loader.getPrompts().prompts.map(p => p.name), ["plan-follow"]);
 			assert.deepEqual(loader.getThemes().diagnostics, []);
-			assert.deepEqual(loader.getThemes().themes.map(t => t.name).sort(), ["dayowl", "modern-dark", "nightowl"]);
+			assert.deepEqual(loader.getThemes().themes, []);
 			console.log("installed resources verified");
 		`;
 

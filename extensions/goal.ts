@@ -1,4 +1,12 @@
 /**
+ * Vendored from mitsuhiko/agent-stuff extensions/goal.ts at 0865c849befd2021490679f96a8dee58c84ac857.
+ * Licensed under Apache-2.0; see NOTIFY-LICENSE.txt.
+ */
+
+// Keep the vendored implementation's parsing and formatting unchanged for upstream comparison.
+/* oxlint-disable anti-slop/no-runtime-typeof, anti-slop/no-unknown-parameters, anti-slop/no-unsafe-dictionary-type, anti-slop/require-readable-spacing, anti-slop/require-safety-comment-for-type-assertion */
+
+/**
  * Goal Extension
  *
  * Session-log-backed long-running objective mode. All state transitions are

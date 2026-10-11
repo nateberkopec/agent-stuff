@@ -1,3 +1,8 @@
 node_modules
 .pi/todos
 *.profraw
+.env
+__pycache__/
+*.pyc
+*.skill
+*.tgz

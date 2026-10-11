@@ -23,15 +23,30 @@ test("the packed package installs and discovers every exported resource in an is
 	};
 
 	try {
-		const packed = JSON.parse(execFileSync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", home], {
-			cwd: root,
-			env,
-			encoding: "utf8",
-		}))[0];
+		const packed = JSON.parse(
+			execFileSync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", home], {
+				cwd: root,
+				env,
+				encoding: "utf8",
+			}),
+		)[0];
 
 		assert.ok(!packed.files.some((file) => file.path.startsWith("node_modules/")));
 		execFileSync("tar", ["-xzf", path.resolve(home, packed.filename), "-C", home]);
 		const installed = path.join(home, "package");
+		assert.match(readFileSync(path.join(installed, "LICENSE"), "utf8"), /^MIT License/);
+		assert.ok(readFileSync(path.join(installed, "THIRD_PARTY_LICENSES.txt"), "utf8").includes("Apache-2.0"));
+
+		for (const license of [
+			"extensions/NOTIFY-LICENSE.txt",
+			"extensions/btw/LICENSE",
+			"extensions/CAFFEINATE-LICENSE.txt",
+			"skills/frontend-design/LICENSE.txt",
+			"skills/skill-creator/LICENSE.txt",
+			"skills/webapp-testing/LICENSE.txt",
+			"skills/matt-pocock-skills-LICENSE.txt",
+		])
+			assert.match(readFileSync(path.join(installed, license), "utf8"), /MIT License|Apache License/);
 		execFileSync("pi", ["install", installed], { cwd: home, env, timeout: 30_000 });
 
 		const worker = `
@@ -79,7 +94,10 @@ test("the packed package installs and discovers every exported resource in an is
 
 		assert.match(output, /installed resources verified/);
 		const settings = JSON.parse(readFileSync(path.join(agentDir, "settings.json"), "utf8"));
-		assert.deepEqual(settings.packages.map((source) => path.resolve(agentDir, source)), [installed]);
+		assert.deepEqual(
+			settings.packages.map((source) => path.resolve(agentDir, source)),
+			[installed],
+		);
 		assert.ok(readdirSync(installed).includes("agents"));
 	} finally {
 		rmSync(home, { recursive: true, force: true });

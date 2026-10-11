@@ -2,14 +2,14 @@
   "name": "@nateberkopec/agent-stuff",
   "version": "0.1.0",
   "private": true,
-  "description": "Nate's agent extensions, skills, prompts, and themes",
+  "description": "Nate's agent extensions, skills, and prompts",
   "repository": {
     "type": "git",
     "url": "https://github.com/nateberkopec/agent-stuff.git"
   },
   "type": "module",
   "keywords": ["pi-package"],
-  "files": ["extensions", "skills", "prompts", "themes", "agents", "LICENSE"],
+  "files": ["extensions", "skills", "prompts", "agents", "LICENSE"],
   "pi": {
     "extensions": [
       "./extensions/answer.ts",
@@ -30,8 +30,7 @@
       "./extensions/window-fork.ts"
     ],
     "skills": ["./skills"],
-    "prompts": ["./prompts"],
-    "themes": ["./themes"]
+    "prompts": ["./prompts"]
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",

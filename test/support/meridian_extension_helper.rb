@@ -8,8 +8,21 @@ module MeridianExtensionHelper
 
   def run_wrapper(source, env = {}, query = "meridian")
     Dir.mktmpdir("meridian-provider") do |agent_dir|
+      contract = File.join(agent_dir, "contract.ts")
       wrapper = File.join(agent_dir, "verify_meridian.ts")
-      File.write(wrapper, source)
+      File.write(contract, source)
+      File.write(wrapper, <<~TS)
+        import contract from #{contract.to_json};
+        export default async function verify(pi) {
+          try {
+            await contract(pi);
+            console.log("MERIDIAN_CONTRACT_COMPLETE");
+          } catch (error) {
+            console.error(error);
+            process.exit(1);
+          }
+        }
+      TS)
       run_extension({"PI_OFFLINE" => nil}.merge(env).merge("PI_CODING_AGENT_DIR" => agent_dir), wrapper, query)
     end
   end
@@ -21,6 +34,7 @@ module MeridianExtensionHelper
       export default async function verify() { await check(); }
     TS
     assert status.success?, output
+    assert_includes output, "MERIDIAN_CONTRACT_COMPLETE"
     refute_match(/Failed to load extension|Extension error/, output)
   end
 

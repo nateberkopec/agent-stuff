@@ -9,7 +9,7 @@ class MeridianCatalogTest < Minitest::Test
       import { buildModels } from #{EXTENSION.to_json};
       import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
       async function check() {
-        const known = { id: "known", contextWindow: 1000000, maxTokens: 64000, reasoning: true,
+        const known = { id: "known", api: "anthropic-messages", contextWindow: 1000000, maxTokens: 64000, reasoning: true,
           input: ["text", "image"], cost: { input: 1, output: 2, cacheRead: 3, cacheWrite: 4 },
           compat: { supportsMidConvoEffort: true }, inputLimits: { maxRequestBytes: 1234 } };
         const entry = { id: "known", object: "model", owned_by: "anthropic", display_name: "Known",

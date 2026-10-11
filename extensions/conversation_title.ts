@@ -1,9 +1,7 @@
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { uuidv7 } from "@earendil-works/pi-ai";
-import { complete } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { auxiliaryHeaders } from "./meridian/requests.ts";
 import { messageText as extractText } from "./shared/message_text.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -129,37 +127,39 @@ export default function conversationTitle(pi: ExtensionAPI) {
 
 			const sessionId = uuidv7();
 
-			const response = await complete(
-				model,
-				{
-					messages: [
-						{
-							role: "user",
-							content: [
-								{
-									type: "text",
-									text:
-										"Write a specific 2-6 word terminal tab title of at most 27 characters including spaces describing the outcome this conversation is trying to accomplish. Phrase as GTD-style action beginning with a verb. Output only the title.\n\n" +
-										source,
-								},
-							],
-							timestamp: Date.now(),
-						},
-					],
-				},
-				{
-					apiKey: auth.apiKey,
-					headers: auxiliaryHeaders(auth.headers, "title", sessionId),
-					env: auth.env,
-					maxTokens: 64,
-					reasoningEffort: "low",
-					cacheRetention: "none",
-					sessionId,
-					signal: controller.signal,
-					timeoutMs: 15_000,
-					maxRetries: 0,
-				},
-			);
+			const response = await ctx.modelRegistry
+				.streamSimple(
+					model,
+					{
+						messages: [
+							{
+								role: "user",
+								content: [
+									{
+										type: "text",
+										text:
+											"Write a specific 2-6 word terminal tab title of at most 27 characters including spaces describing the outcome this conversation is trying to accomplish. Phrase as GTD-style action beginning with a verb. Output only the title.\n\n" +
+											source,
+									},
+								],
+								timestamp: Date.now(),
+							},
+						],
+					},
+					{
+						apiKey: auth.apiKey,
+						headers: auth.headers,
+						env: auth.env,
+						maxTokens: 64,
+						reasoning: "low",
+						cacheRetention: "none",
+						sessionId,
+						signal: controller.signal,
+						timeoutMs: 15_000,
+						maxRetries: 0,
+					},
+				)
+				.result();
 
 			if (response.stopReason === "error") {
 				throw new Error(response.errorMessage || "Title generation failed");

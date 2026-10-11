@@ -6,20 +6,9 @@ let response;
 
 let requestOptions;
 
-globalThis.__titleComplete = async (_model, _context, options) => {
-	requestOptions = options;
-
-	return response;
-};
-
 registerHooks({
 	resolve(specifier, context, nextResolve) {
-		const source =
-			specifier === "@earendil-works/pi-ai"
-				? 'export const uuidv7 = () => "test-session";'
-				: specifier === "@earendil-works/pi-ai/compat"
-					? "export const complete = (...args) => globalThis.__titleComplete(...args);"
-					: undefined;
+		const source = specifier === "@earendil-works/pi-ai" ? 'export const uuidv7 = () => "test-session";' : undefined;
 
 		return source
 			? { url: `data:text/javascript,${encodeURIComponent(source)}`, shortCircuit: true }
@@ -48,6 +37,11 @@ async function settle(result, headers) {
 		mode: "tui",
 		model: { provider: "openai", id: "gpt-6.1-sol" },
 		modelRegistry: {
+			streamSimple(_model, _context, options) {
+				requestOptions = options;
+
+				return { result: async () => response };
+			},
 			async getApiKeyAndHeaders() {
 				return { ok: true, apiKey: "test-key", headers };
 			},
@@ -83,14 +77,14 @@ test("generates and saves a title using reasoning supported by the session model
 		content: [{ type: "text", text: "Fix notification banners" }],
 	});
 
-	assert.equal(requestOptions.reasoningEffort, "low");
+	assert.equal(requestOptions.reasoning, "low");
 	assert.equal(entries[0].type, "conversation-title");
 	assert.equal(entries[0].data.title, "Fix notification banners");
 	assert.equal(titles.at(-1), "π · Fix notification banners");
 	assert.deepEqual(warnings, []);
 });
 
-test("isolates Meridian title calls from the primary conversation", async () => {
+test("routes title calls through the provider registry with a separate session identity", async () => {
 	await settle(
 		{ stopReason: "stop", content: [{ type: "text", text: "Fix notifications" }] },
 		{
@@ -99,9 +93,8 @@ test("isolates Meridian title calls from the primary conversation", async () => 
 			"x-meridian-profile": "work",
 		},
 	);
-	assert.equal(requestOptions.headers["x-session-affinity"], "test-session");
-	assert.equal(requestOptions.headers["x-meridian-source"], "subagent-title");
-	assert.equal(requestOptions.headers["x-opencode-agent-mode"], "subagent");
+	assert.equal(requestOptions.sessionId, "test-session");
+	assert.equal(requestOptions.headers["x-session-affinity"], "parent");
 	assert.equal(requestOptions.headers["x-meridian-profile"], "work");
 });
 

@@ -79,6 +79,14 @@ class MeridianProviderTest < Minitest::Test
   end
 
   def test_malformed_catalog_is_rejected
+    failure, failed_status = run_wrapper(<<~TS, {"PI_OFFLINE" => "1"})
+      import assert from "node:assert/strict";
+      export default async function verify() { assert.fail("MERIDIAN_EXPECTED_FAILURE"); }
+    TS
+    refute failed_status.success?, failure
+    assert_includes failure, "MERIDIAN_EXPECTED_FAILURE"
+    refute_includes failure, "MERIDIAN_CONTRACT_COMPLETE"
+
     output, status = run_wrapper(<<~TS, {}, "catalog-test")
       import { buildModels } from #{EXTENSION.to_json};
 

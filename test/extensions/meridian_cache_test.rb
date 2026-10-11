@@ -16,8 +16,8 @@ class MeridianCacheTest < Minitest::Test
           display_name: "Known", context_window: 200000, capabilities: {} }] };
         const now = 1000000000;
         writeCatalogCache(catalog, path, now);
-        assert.equal(readCatalogCache([{ id: "known", maxTokens: 1234 }], path, now)[0].maxTokens, 1234);
-        assert.equal(readCatalogCache([{ id: "known", maxTokens: 5678 }], path, now)[0].maxTokens, 5678);
+        assert.equal(readCatalogCache([{ id: "known", api: "anthropic-messages", maxTokens: 1234 }], path, now)[0].maxTokens, 1234);
+        assert.equal(readCatalogCache([{ id: "known", api: "anthropic-messages", maxTokens: 5678 }], path, now)[0].maxTokens, 5678);
         assert.deepEqual(readCatalogCache([], path, now - 1), []);
         assert.deepEqual(readCatalogCache([], path, now + CACHE_TTL_MS + 1), []);
         const cached = JSON.parse(readFileSync(path, "utf8"));

@@ -1,6 +1,7 @@
 {
   "ignorePatterns": [
     "node_modules/**",
+    "development/node_modules/**",
     "vendor/**",
     "tmp/**",
     ".claude/worktrees/**",

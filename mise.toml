@@ -14,11 +14,11 @@ uv = "0.12.21"
 
 [tasks.setup]
 description = "Install development dependencies"
-run = "aube install --frozen-lockfile --ignore-scripts"
+run = "bash tools/setup-development.sh"
 
 [tasks."lint:javascript"]
 description = "Check JavaScript and TypeScript with anti-slop rules"
-sources = ["extensions/**", "test/**", ".oxlintrc.json", "tools/oxlint/**", "package.json", "aube-lock.yaml"]
+sources = ["extensions/**", "test/**", ".oxlintrc.json", "tools/oxlint/**", "package.json", "development/package.json", "development/aube-lock.yaml"]
 run = "node_modules/.bin/oxlint --config .oxlintrc.json --deny-warnings ."
 
 [tasks."lint:skills"]
@@ -36,7 +36,7 @@ depends = ["lint:javascript", "lint:skills", "lint:secrets"]
 
 [tasks."test:javascript"]
 description = "Run JavaScript extension tests"
-sources = ["extensions/**", "test/**", "package.json", "aube-lock.yaml"]
+sources = ["extensions/**", "test/**", "package.json", "development/package.json", "development/aube-lock.yaml"]
 run = "node --test test/*_test.mjs"
 
 [tasks."test:ruby"]
@@ -46,7 +46,7 @@ run = "ruby -Itest -e 'Dir.glob(\"test/**/*_test.rb\").sort.each { |file| requir
 
 [tasks."test:types"]
 description = "Type-check every extension"
-sources = ["extensions/**", "test/support/**", "tsconfig.json", "package.json", "aube-lock.yaml"]
+sources = ["extensions/**", "test/support/**", "tsconfig.json", "package.json", "development/package.json", "development/aube-lock.yaml"]
 run = "tsc --project tsconfig.json"
 
 [tasks.test]

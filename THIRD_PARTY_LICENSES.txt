@@ -1,0 +1,41 @@
+The project's MIT license does not replace third-party licenses or copyright
+notices. Existing component-level licenses and provenance notices are retained.
+
+Armin Ronacher / mitsuhiko/agent-stuff — Apache-2.0
+Source: https://github.com/mitsuhiko/agent-stuff
+Revision: 0865c849befd2021490679f96a8dee58c84ac857
+Upstream-derived material in:
+  extensions/answer.ts
+  extensions/goal.ts
+  extensions/notify.ts
+  extensions/window-fork.ts
+  extensions/btw/index.ts
+  extensions/btw/overlay.ts
+License: extensions/NOTIFY-LICENSE.txt and extensions/btw/LICENSE
+
+Anthropic skills — Apache-2.0
+  skills/frontend-design/ — skills/frontend-design/LICENSE.txt
+  skills/skill-creator/ — skills/skill-creator/LICENSE.txt
+  skills/webapp-testing/ — skills/webapp-testing/LICENSE.txt
+
+Matt Pocock skills — MIT, copyright Matt Pocock
+  skills/diagnosing-bugs/, skills/domain-modeling/, skills/grill-me/,
+  skills/grill-with-docs/, skills/grilling/, skills/pr/, skills/retro/,
+  skills/wait-what/, skills/writing-for-agents/
+License: skills/matt-pocock-skills-LICENSE.txt
+Source revisions are recorded in the individual SKILL.md files.
+
+Abhishek Sinha / forlorn-echo/pi-caffeinate — MIT
+  extensions/caffeinate.ts
+Source: https://github.com/forlorn-echo/pi-caffeinate
+Revision: 3a7629bd3bb119cea6f428e1fca751c4f7089934
+License: extensions/CAFFEINATE-LICENSE.txt
+
+Dillon Mulroy / dmmulroy/anti-slop — MIT
+  tools/oxlint/anti-slop/
+License and provenance: tools/oxlint/anti-slop/LICENSE and UPSTREAM.md
+The nested ESLint Stylistic code retains its own MIT copyright notices:
+  tools/oxlint/anti-slop/vendor/eslint-stylistic/LICENSE and UPSTREAM.md
+
+Third-party fixtures and other third-party materials are not relicensed by the
+project's default MIT license.

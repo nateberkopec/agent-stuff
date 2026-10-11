@@ -1,41 +1,55 @@
 {
-  "name": "@nateberkopec/agent-stuff",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Nate's agent extensions, skills, and prompts",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/nateberkopec/agent-stuff.git"
-  },
-  "type": "module",
-  "keywords": ["pi-package"],
-  "files": ["extensions", "skills", "prompts", "agents", "LICENSE"],
-  "pi": {
-    "extensions": [
-      "./extensions/answer.ts",
-      "./extensions/btw/index.ts",
-      "./extensions/cache_hit_warning.ts",
-      "./extensions/caffeinate.ts",
-      "./extensions/compact_at.ts",
-      "./extensions/conversation_title.ts",
-      "./extensions/datasafe/index.ts",
-      "./extensions/executor-watch/index.ts",
-      "./extensions/find_timeout.ts",
-      "./extensions/goal.ts",
-      "./extensions/herdr-status/index.ts",
-      "./extensions/meridian.ts",
-      "./extensions/notify.ts",
-      "./extensions/plan_follow.ts",
-      "./extensions/toksec/index.ts",
-      "./extensions/window-fork.ts"
-    ],
-    "skills": ["./skills"],
-    "prompts": ["./prompts"]
-  },
-  "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-tui": "*",
-    "typebox": "*"
-  }
+	"name": "@nateberkopec/agent-stuff",
+	"version": "0.1.0",
+	"private": true,
+	"description": "Nate's agent extensions, skills, and prompts",
+	"keywords": [
+		"pi-package"
+	],
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/nateberkopec/agent-stuff.git"
+	},
+	"files": [
+		"extensions",
+		"skills",
+		"prompts",
+		"agents",
+		"LICENSE",
+		"THIRD_PARTY_LICENSES.txt"
+	],
+	"type": "module",
+	"peerDependencies": {
+		"@earendil-works/pi-ai": "*",
+		"@earendil-works/pi-coding-agent": "*",
+		"@earendil-works/pi-tui": "*",
+		"typebox": "*"
+	},
+	"pi": {
+		"extensions": [
+			"./extensions/answer.ts",
+			"./extensions/btw/index.ts",
+			"./extensions/cache_hit_warning.ts",
+			"./extensions/caffeinate.ts",
+			"./extensions/compact_at.ts",
+			"./extensions/conversation_title.ts",
+			"./extensions/datasafe/index.ts",
+			"./extensions/executor-watch/index.ts",
+			"./extensions/find_timeout.ts",
+			"./extensions/goal.ts",
+			"./extensions/herdr-status/index.ts",
+			"./extensions/meridian.ts",
+			"./extensions/notify.ts",
+			"./extensions/plan_follow.ts",
+			"./extensions/toksec/index.ts",
+			"./extensions/window-fork.ts"
+		],
+		"skills": [
+			"./skills"
+		],
+		"prompts": [
+			"./prompts"
+		]
+	}
 }

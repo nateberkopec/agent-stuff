@@ -22,7 +22,7 @@ module MeridianExtensionHelper
             process.exit(1);
           }
         }
-      TS)
+      TS
       run_extension({"PI_OFFLINE" => nil}.merge(env).merge("PI_CODING_AGENT_DIR" => agent_dir), wrapper, query)
     end
   end

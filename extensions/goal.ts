@@ -649,22 +649,10 @@ export default function goalExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("context", async (event) => {
-		let lastContinuationIndex = -1;
-		for (let i = 0; i < event.messages.length; i++) {
-			const msg = event.messages[i] as { customType?: string; details?: { goalId?: string } };
-			if (msg.customType === CONTINUATION_MESSAGE_TYPE && msg.details?.goalId === goal?.id) {
-				lastContinuationIndex = i;
-			}
-		}
-
 		return {
-			messages: event.messages.filter((message, index) => {
-				const msg = message as { customType?: string; details?: { goalId?: string } };
-				if (msg.customType === UI_MESSAGE_TYPE) return false;
-				if (msg.customType === CONTINUATION_MESSAGE_TYPE) {
-					return goal?.status === "active" && msg.details?.goalId === goal.id && index === lastContinuationIndex;
-				}
-				return true;
+			messages: event.messages.filter((message) => {
+				const msg = message as { customType?: string };
+				return msg.customType !== UI_MESSAGE_TYPE;
 			}),
 		};
 	});

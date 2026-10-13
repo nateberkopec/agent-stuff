@@ -17,9 +17,9 @@
  * 4. Submits the compiled answers when done
  */
 
-import { parseJsonWithRepair, type Model, type Api, type UserMessage } from "@earendil-works/pi-ai";
+import { Type, parseJsonWithRepair, type Model, type Api, type UserMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext, ModelRegistry } from "@earendil-works/pi-coding-agent";
-import { BorderedLoader } from "@earendil-works/pi-coding-agent";
+import { BorderedLoader, defineTool } from "@earendil-works/pi-coding-agent";
 import {
 	type Component,
 	Editor,
@@ -490,6 +490,46 @@ class QnAComponent implements Component {
 }
 
 export default function (pi: ExtensionAPI) {
+	pi.registerTool(defineTool({
+		name: "answer",
+		label: "Answer questions",
+		description: "Collect the user's answers in an interactive Q&A screen. Use for each grilling question round. Supply complete question text, choices, and recommendations; the user's answers are returned directly. If cancelled, stop the interview until the user asks to resume.",
+		exposure: "model-only",
+		parameters: Type.Object({
+			questions: Type.Array(Type.Object({
+				question: Type.String({ minLength: 1, description: "Complete question, including title, explanation, and choices." }),
+				context: Type.Optional(Type.String({ description: "Supporting context or your recommended answer." })),
+			}), { minItems: 1 }),
+		}),
+		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+			if (ctx.mode !== "tui") {
+				throw new Error("answer requires interactive terminal mode; ask the questions in chat instead.");
+			}
+			if (signal?.aborted) {
+				return { content: [{ type: "text", text: "Cancelled. Wait for the user to resume." }], details: { cancelled: true }, terminate: true };
+			}
+			let abortHandler: (() => void) | undefined;
+			let answers: string | null;
+			try {
+				answers = await ctx.ui.custom<string | null>((tui, _theme, _kb, done) => {
+					abortHandler = () => done(null);
+					signal?.addEventListener("abort", abortHandler, { once: true });
+					if (signal?.aborted) done(null);
+					return new QnAComponent(params.questions, tui, done);
+				});
+			} finally {
+				if (abortHandler) signal?.removeEventListener("abort", abortHandler);
+			}
+			if (answers === null) {
+				return { content: [{ type: "text", text: "Cancelled. Wait for the user to resume." }], details: { cancelled: true }, terminate: true };
+			}
+			return {
+				content: [{ type: "text", text: "The user answered your questions:\n\n" + answers }],
+				details: { cancelled: false, answers },
+			};
+		},
+	}));
+
 	const answerHandler = async (ctx: ExtensionContext) => {
 			if (!ctx.hasUI) {
 				ctx.ui.notify("answer requires interactive mode", "error");

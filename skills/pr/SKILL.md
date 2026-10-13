@@ -1,14 +1,14 @@
 ---
 name: pr
 description: "Use when writing a PR body."
-license: "MIT; copyright Matt Pocock; see ../matt-pocock-skills-LICENSE.txt"
-source: https://github.com/mattpocock/skills/blob/49dd158d1076134a641b33efb035946536778336/skills/engineering/pr/SKILL.md
 metadata:
   credits:
     skill: show-me
     author: Dex Horthy
     organisation: Humanlayer
     url: "https://github.com/humanlayer/skills/blob/main/plugins/show-me/skills/show-me/SKILL.md"
+license: "MIT; copyright Matt Pocock; see ../matt-pocock-skills-LICENSE.txt"
+source: https://github.com/mattpocock/skills/blob/49dd158d1076134a641b33efb035946536778336/skills/engineering/pr/SKILL.md
 ---
 
 Use this template for writing the PR body:

@@ -69,7 +69,7 @@ test("the packed package installs and discovers every exported resource in an is
 			assert.deepEqual(loaded.extensions.map(e => e.resolvedPath).sort(),
 				manifest.pi.extensions.map(p => path.resolve(root, p)).sort());
 			const tools = loaded.extensions.flatMap(e => [...e.tools.keys()]);
-			assert.deepEqual(tools.sort(), ["create_goal", "executor_watch", "get_goal", "update_goal"]);
+			assert.deepEqual(tools.sort(), ["answer", "create_goal", "executor_watch", "get_goal", "update_goal"]);
 			const commands = loaded.extensions.flatMap(e => [...e.commands.keys()]);
 			assert.equal(commands.length, new Set(commands).size);
 			for (const name of ["answer", "btw", "compact-at", "goal", "window-fork", "plan-pause"])

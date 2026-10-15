@@ -11,6 +11,8 @@ metadata:
     url: "https://github.com/humanlayer/skills/blob/main/plugins/show-me/skills/show-me/SKILL.md"
 ---
 
+Use a Claude opus-5-5 subagent to write your PR descriptions, including this skill in the prompt. If you are a Claude Opus model, this is not necessary.
+
 Use this template for writing the PR body:
 
 ```markdown
@@ -36,7 +38,11 @@ Use this template for writing the PR body:
 
 ## Sections
 
-Skip all preambles and keep prose brief. Use the user's domain language from `GLOSSARY.md`.
+Use ASD-STE100 Simplified Technical English, at a 10th grade reading label or less. 
+
+Use the user's domain language from `GLOSSARY.md`.
+
+Do not assume the reader has any prior familiarity with this code or your conversation up to this point.
 
 ### Summary
 

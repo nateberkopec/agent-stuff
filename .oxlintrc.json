@@ -15,6 +15,20 @@
       "specifier": "./tools/oxlint/anti-slop/index.ts"
     }
   ],
+  "overrides": [
+    {
+      "files": ["extensions/fast-mode/*.ts", "extensions/openai-guidance/*.ts"],
+      "rules": {
+        "anti-slop/no-array-filter-map": "off",
+        "anti-slop/no-known-value-widening": "off",
+        "anti-slop/no-runtime-typeof": "off",
+        "anti-slop/no-unsafe-dictionary-type": "off",
+        "anti-slop/no-unknown-parameters": "off",
+        "anti-slop/require-readable-spacing": "off",
+        "anti-slop/require-safety-comment-for-type-assertion": "off"
+      }
+    }
+  ],
   "rules": {
     "oxc/no-accumulating-spread": "error",
     "anti-slop/no-array-filter-map": "error",

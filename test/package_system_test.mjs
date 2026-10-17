@@ -40,6 +40,7 @@ test("the packed package installs and discovers every exported resource in an is
 		for (const license of [
 			"extensions/NOTIFY-LICENSE.txt",
 			"extensions/btw/LICENSE",
+			"extensions/fast-mode/LICENSE",
 			"extensions/CAFFEINATE-LICENSE.txt",
 			"skills/frontend-design/LICENSE.txt",
 			"skills/skill-creator/LICENSE.txt",
@@ -72,8 +73,13 @@ test("the packed package installs and discovers every exported resource in an is
 			assert.deepEqual(tools.sort(), ["answer", "create_goal", "executor_watch", "get_goal", "update_goal"]);
 			const commands = loaded.extensions.flatMap(e => [...e.commands.keys()]);
 			assert.equal(commands.length, new Set(commands).size);
-			for (const name of ["answer", "btw", "compact-at", "goal", "window-fork", "plan-pause"])
+			for (const name of ["answer", "btw", "compact-at", "fast", "goal", "window-fork", "plan-pause"])
 				assert.ok(commands.includes(name), name);
+			const guidance = await import(path.join(root, "extensions/openai-guidance/guidance.ts"));
+			const texts = guidance.loadTexts();
+			const selected = guidance.selectRules({ provider: "openai", id: "gpt-6-astra" }, ["edit", "bash"], { disabled: [] });
+			assert.ok(selected.length > 0);
+			assert.match(guidance.guidanceBlock(selected, texts), /<pi-openai-guidance>/);
 			const expectedSkills = fs.readdirSync(path.join(root, "skills")).filter(name =>
 				fs.existsSync(path.join(root, "skills", name, "SKILL.md")));
 			assert.deepEqual(loader.getSkills().diagnostics, []);

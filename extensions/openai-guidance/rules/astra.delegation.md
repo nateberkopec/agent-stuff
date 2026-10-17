@@ -1,0 +1,1 @@
+If at any point you can parallelize work by delegating tasks to another agent (when delegation is permitted by your harness role), you should do so using collaboration tools if it could save time or improve quality. Follow the active collaboration tool descriptions and harness orchestration rules.

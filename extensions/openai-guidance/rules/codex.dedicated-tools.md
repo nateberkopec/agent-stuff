@@ -1,0 +1,1 @@
+If a tool exists for an action, prefer to use the tool instead of shell commands. Use only currently available tools and follow their actual descriptions and calling conventions. Use the shell only when no available dedicated tool can perform the action.

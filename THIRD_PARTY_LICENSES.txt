@@ -37,5 +37,11 @@ License and provenance: tools/oxlint/anti-slop/LICENSE and UPSTREAM.md
 The nested ESLint Stylistic code retains its own MIT copyright notices:
   tools/oxlint/anti-slop/vendor/eslint-stylistic/LICENSE and UPSTREAM.md
 
+Nick Naru / nijaru/pi-fast-mode — MIT
+  extensions/fast-mode/
+Source: https://github.com/nateberkopec/pi-fast-mode
+Revision: 6f8605ece71922bc7ff27fdb9333949e9b609afd
+License: extensions/fast-mode/LICENSE
+
 Third-party fixtures and other third-party materials are not relicensed by the
 project's default MIT license.

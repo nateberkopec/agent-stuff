@@ -36,10 +36,12 @@
 			"./extensions/conversation_title.ts",
 			"./extensions/datasafe/index.ts",
 			"./extensions/executor-watch/index.ts",
+			"./extensions/fast-mode/index.ts",
 			"./extensions/find_timeout.ts",
 			"./extensions/goal.ts",
 			"./extensions/herdr-status/index.ts",
 			"./extensions/notify.ts",
+			"./extensions/openai-guidance/index.ts",
 			"./extensions/plan_follow.ts",
 			"./extensions/toksec/index.ts",
 			"./extensions/window-fork.ts"

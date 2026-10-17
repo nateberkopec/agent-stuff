@@ -42,9 +42,7 @@
 			"./extensions/herdr-status/index.ts",
 			"./extensions/notify.ts",
 			"./extensions/openai-guidance/index.ts",
-			"./extensions/plan_follow.ts",
-			"./extensions/toksec/index.ts",
-			"./extensions/window-fork.ts"
+			"./extensions/toksec/index.ts"
 		],
 		"skills": [
 			"./skills"

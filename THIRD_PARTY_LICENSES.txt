@@ -8,7 +8,6 @@ Upstream-derived material in:
   extensions/answer.ts
   extensions/goal.ts
   extensions/notify.ts
-  extensions/window-fork.ts
   extensions/btw/index.ts
   extensions/btw/overlay.ts
 License: extensions/NOTIFY-LICENSE.txt and extensions/btw/LICENSE

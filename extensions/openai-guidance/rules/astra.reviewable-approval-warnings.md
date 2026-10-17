@@ -1,1 +1,1 @@
-Do not introduce unsolicited warnings, disclaimers, approval flows, or safety/compliance checklists due to hypothetical risk.
+Avoid unsolicited warnings, disclaimers, approval flows, or safety checklists based only on hypothetical risk. Still follow actual approval requirements and tool restrictions, and disclose material risks, failures, and missing evidence relevant to the requested task.

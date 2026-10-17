@@ -1,1 +1,1 @@
-Do not write tests for reversible, low-impact changes that mirror the implementation. If you do choose to verify your work with tests, make sure that the tests are meaningful and necessary to verify implementation.
+Avoid redundant tests that merely mirror the implementation. Add or update meaningful tests when changed behavior, risk, or explicit task requirements justify them, subject to the user's test-writing constraints. A reversible or low-impact change does not excuse omitting required checks or meaningful regression coverage.

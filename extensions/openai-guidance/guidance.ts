@@ -7,7 +7,7 @@ export type Config = { disabled: string[] };
 const providers = new Set(["openai", "openai-codex"]);
 export function modelFamily(model?: Model): string | undefined {
   if (!model || !providers.has(model.provider) || !/^gpt-[56]/.test(model.id)) return undefined;
-  return /-astra(?:-|$)/.test(model.id) ? "astra" : "family";
+  return model.id.startsWith("gpt-6") ? "gpt-6" : "gpt-5";
 }
 
 export function parseConfig(value: unknown): Config {
@@ -44,9 +44,15 @@ export function readConfig(path: string): Config {
 export function selectRules(model: Model | undefined, tools: readonly string[], config: Config): Rule[] {
   const family = modelFamily(model);
   if (!family) return [];
+  const disabled = new Set(config.disabled);
+  if (disabled.has("gpt-5.6.updates") || disabled.has("astra.updates")) {
+    disabled.add("gpt-5.6.updates");
+    disabled.add("astra.updates");
+  }
+  if (disabled.has("gpt-5.6.validation")) disabled.add("astra.testing-stop");
   return (rules as readonly Rule[]).filter(rule =>
     (rule.models === "all" || rule.models === family) &&
-    !config.disabled.includes(rule.id) && (!rule.tool || tools.includes(rule.tool)));
+    !disabled.has(rule.id) && (!rule.tool || tools.includes(rule.tool)));
 }
 
 export function loadTexts(): Map<string, string> {

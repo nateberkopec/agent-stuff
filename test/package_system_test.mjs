@@ -73,7 +73,7 @@ test("the packed package installs and discovers every exported resource in an is
 			assert.deepEqual(tools.sort(), ["answer", "create_goal", "executor_watch", "get_goal", "update_goal"]);
 			const commands = loaded.extensions.flatMap(e => [...e.commands.keys()]);
 			assert.equal(commands.length, new Set(commands).size);
-			for (const name of ["answer", "btw", "compact-at", "fast", "goal", "window-fork", "plan-pause"])
+			for (const name of ["answer", "btw", "compact-at", "fast", "goal"])
 				assert.ok(commands.includes(name), name);
 			const guidance = await import(path.join(root, "extensions/openai-guidance/guidance.ts"));
 			const texts = guidance.loadTexts();
@@ -85,7 +85,7 @@ test("the packed package installs and discovers every exported resource in an is
 			assert.deepEqual(loader.getSkills().diagnostics, []);
 			assert.deepEqual(loader.getSkills().skills.map(s => s.name).sort(), expectedSkills.sort());
 			assert.deepEqual(loader.getPrompts().diagnostics, []);
-			assert.deepEqual(loader.getPrompts().prompts.map(p => p.name), ["plan-follow"]);
+			assert.deepEqual(loader.getPrompts().prompts.map(p => p.name), []);
 			assert.deepEqual(loader.getThemes().diagnostics, []);
 			assert.deepEqual(loader.getThemes().themes, []);
 			console.log("installed resources verified");

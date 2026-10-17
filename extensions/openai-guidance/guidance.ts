@@ -5,15 +5,9 @@ export type Model = { id: string; provider: string };
 export type Rule = { id: string; models: string; tool?: string };
 export type Config = { disabled: string[] };
 const providers = new Set(["openai", "openai-codex"]);
-const models: Record<string, string> = {
-  "gpt-6-astra": "astra",
-  "gpt-5.6-sol": "family",
-  "gpt-5.6-luna": "family",
-};
-
 export function modelFamily(model?: Model): string | undefined {
-  return model && providers.has(model.provider) && Object.hasOwn(models, model.id)
-    ? models[model.id] : undefined;
+  if (!model || !providers.has(model.provider) || !/^gpt-[56]/.test(model.id)) return undefined;
+  return /-astra(?:-|$)/.test(model.id) ? "astra" : "family";
 }
 
 export function parseConfig(value: unknown): Config {

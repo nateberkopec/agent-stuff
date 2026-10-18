@@ -12,7 +12,7 @@ class OpenRouterUSRuntimeTest < Minitest::Test
   BASE_URL = "https://us.openrouter.ai/api/v1"
 
   def setup
-    flunk "required Pi runtime is missing" unless command_available?("pi")
+    flunk "required Pi runtime is missing" unless File.executable?(PI_EXECUTABLE)
   end
 
   def test_online_startup_uses_cache_then_refreshes_in_background
@@ -53,12 +53,6 @@ class OpenRouterUSRuntimeTest < Minitest::Test
 
   private
 
-  def command_available?(command)
-    ENV.fetch("PATH", "").split(File::PATH_SEPARATOR).any? do |directory|
-      File.executable?(File.join(directory, command))
-    end
-  end
-
   def with_agent_dir(&block)
     Dir.mktmpdir("openrouter-us-runtime", &block)
   end
@@ -82,7 +76,7 @@ class OpenRouterUSRuntimeTest < Minitest::Test
 
   def run_rpc_refresh(agent_dir, mock)
     env = {"OPENROUTER_API_KEY" => "runtime-test", "PI_CODING_AGENT_DIR" => agent_dir, "PI_OFFLINE" => nil}
-    Open3.popen3(env, "pi", "--no-extensions", "--extension", mock, "--mode", "rpc", "--no-session") do |stdin, stdout, stderr, wait|
+    Open3.popen3(env, PI_EXECUTABLE, "--no-extensions", "--extension", mock, "--mode", "rpc", "--no-session") do |stdin, stdout, stderr, wait|
       begin
         Timeout.timeout(10) do
           loop do
@@ -148,7 +142,7 @@ class OpenRouterUSRuntimeTest < Minitest::Test
     }
     output, status = Open3.capture2e(
       env,
-      "pi", "--no-extensions", "--extension", mock || INDEX, "--list-models", "openrouter"
+      PI_EXECUTABLE, "--no-extensions", "--extension", mock || INDEX, "--list-models", "openrouter"
     )
     assert status.success?, output
     output

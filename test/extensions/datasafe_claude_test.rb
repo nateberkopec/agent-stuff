@@ -81,7 +81,7 @@ class DatasafeClaudeTest < Minitest::Test
     env = {"PI_CODING_AGENT_DIR" => dir, "PI_OFFLINE" => "1", "PI_DATASAFE_MODE" => mode,
            "ANTHROPIC_API_KEY" => "fake", "OPENAI_API_KEY" => "fake", "OPENROUTER_API_KEY" => "fake",
            "FIREWORKS_API_KEY" => "fake", "AI_GATEWAY_API_KEY" => "fake"}
-    output, = Open3.capture2e(env, "pi", "--no-extensions", "--extension", EXTENSION, *args)
+    output, = Open3.capture2e(env, PI_EXECUTABLE, "--no-extensions", "--extension", EXTENSION, *args)
     output
   end
 end

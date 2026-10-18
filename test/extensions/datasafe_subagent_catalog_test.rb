@@ -24,12 +24,12 @@ class DatasafeSubagentCatalogTest < Minitest::Test
       TS
       env = {"PI_CODING_AGENT_DIR" => dir, "PI_OFFLINE" => "1", "FIREWORKS_API_KEY" => "test-key",
              "OPENROUTER_API_KEY" => "test-key"}
-      Open3.popen3(env, "pi", "--no-extensions", "--extension", EXTENSION, "--extension", probe,
+      Open3.popen3(env, PI_EXECUTABLE, "--no-extensions", "--extension", EXTENSION, "--extension", probe,
         "--mode", "rpc", "--no-session") do |stdin, stdout, stderr, wait|
         begin
           assert_includes ids(stdin, stdout), OLD
           File.write(store, JSON.generate(catalog(KIMI, ROUTER_NEW, 2)))
-          listing, errors, status = Open3.capture3(env, "pi", "--no-extensions", "--extension", EXTENSION,
+          listing, errors, status = Open3.capture3(env, PI_EXECUTABLE, "--no-extensions", "--extension", EXTENSION,
             "--list-models", "kimi-k3-us")
           assert status.success?, errors
           assert_includes listing, KIMI

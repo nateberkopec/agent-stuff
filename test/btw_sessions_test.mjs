@@ -14,7 +14,7 @@ function fixture(run) {
 
 	const prompt = (...prompts) => {
 		execFileSync(
-			"pi",
+			path.join(root, "node_modules/.bin/pi"),
 			[
 				"--offline",
 				"--mode",

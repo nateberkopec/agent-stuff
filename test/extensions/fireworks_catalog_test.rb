@@ -115,13 +115,13 @@ class FireworksCatalogTest < Minitest::Test
         export default extension;
       TS
       env = {"PI_CODING_AGENT_DIR" => agent_dir, "FIREWORKS_API_KEY" => "test-key", "PI_OFFLINE" => nil}
-      output, stderr, status = Open3.capture3(env, "pi", "--no-extensions", "--extension", mock,
+      output, stderr, status = Open3.capture3(env, PI_EXECUTABLE, "--no-extensions", "--extension", mock,
         "--list-models", "fireworks")
       assert status.success?, stderr
       assert_includes output, cached.fetch("id")
       refute File.exist?(calls), "--list-models must not wait for network discovery"
 
-      Open3.popen3(env, "pi", "--no-extensions", "--extension", mock, "--mode", "rpc", "--no-session") do |stdin, stdout, errors, wait|
+      Open3.popen3(env, PI_EXECUTABLE, "--no-extensions", "--extension", mock, "--mode", "rpc", "--no-session") do |stdin, stdout, errors, wait|
         ids = []
         begin
           Timeout.timeout(10) do
@@ -169,7 +169,7 @@ class FireworksCatalogTest < Minitest::Test
 
       stdout, stderr, status = Open3.capture3(
         {"PI_CODING_AGENT_DIR" => agent_dir, "PI_OFFLINE" => "1", "FIREWORKS_API_KEY" => "test-key"},
-        "pi", "--no-extensions", "--extension", EXTENSION, "--list-models", "fireworks"
+        PI_EXECUTABLE, "--no-extensions", "--extension", EXTENSION, "--list-models", "fireworks"
       )
 
       assert status.success?, stderr

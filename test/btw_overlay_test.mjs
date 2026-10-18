@@ -14,7 +14,7 @@ test("shared overlay frames and pads every real Markdown row, including blank, w
 
 	try {
 		execFileSync(
-			"pi",
+			path.join(root, "node_modules/.bin/pi"),
 			[
 				"--offline",
 				"--mode",

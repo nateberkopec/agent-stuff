@@ -69,7 +69,7 @@ class NoTrainingExtensionsTest < Minitest::Test
           "models" => [{"id" => model, "baseUrl" => "https://us.openrouter.ai/api/v1"}], "checkedAt" => 1
         }))
       end
-      stdout, stderr, = Open3.capture3(env, "pi", "--no-extensions", "--extension", script,
+      stdout, stderr, = Open3.capture3(env, PI_EXECUTABLE, "--no-extensions", "--extension", script,
         "--provider", provider, "--model", model, "--no-tools", "--no-session", "-p", "hello")
       assert File.exist?(result), "request not captured: #{stdout} #{stderr}"
       assert File.exist?(sent), "outgoing request not captured: #{stdout} #{stderr}"

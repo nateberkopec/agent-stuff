@@ -50,7 +50,7 @@ class DatasafeModesTest < Minitest::Test
         export default function mock() {}
       TS
       env = {"PI_CODING_AGENT_DIR" => dir, "PI_OFFLINE" => "1", "ANTHROPIC_API_KEY" => "fake", "OPENAI_API_KEY" => "fake"}
-      args = ["pi", "--no-extensions", "--extension", mock, "--extension", EXTENSION, "--session-dir", sessions]
+      args = [PI_EXECUTABLE, "--no-extensions", "--extension", mock, "--extension", EXTENSION, "--session-dir", sessions]
       Open3.capture2e(env.merge("PI_DATASAFE_MODE" => "unrestricted"), *args,
         "--provider", "anthropic", "--model", "claude-sonnet-4-6", "-p", "secret")
       initial_calls = File.readlines(calls)
@@ -96,7 +96,7 @@ class DatasafeModesTest < Minitest::Test
   def pi(dir, *args, mode: nil)
     env = {"PI_CODING_AGENT_DIR" => dir, "PI_OFFLINE" => "1", "ANTHROPIC_API_KEY" => "fake",
            "PI_DATASAFE_MODE" => mode, "OPENAI_API_KEY" => "fake"}
-    output, = Open3.capture2e(env, "pi", "--no-extensions", "--extension", EXTENSION, *args)
+    output, = Open3.capture2e(env, PI_EXECUTABLE, "--no-extensions", "--extension", EXTENSION, *args)
     output
   end
 end

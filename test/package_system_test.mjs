@@ -48,7 +48,7 @@ test("the packed package installs and discovers every exported resource in an is
 			"skills/matt-pocock-skills-LICENSE.txt",
 		])
 			assert.match(readFileSync(path.join(installed, license), "utf8"), /MIT License|Apache License/);
-		execFileSync("pi", ["install", installed], { cwd: home, env, timeout: 30_000 });
+		execFileSync(path.join(root, "node_modules/.bin/pi"), ["install", installed], { cwd: home, env, timeout: 30_000 });
 
 		const worker = `
 			import assert from "node:assert/strict";

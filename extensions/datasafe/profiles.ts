@@ -1,25 +1,27 @@
 export interface Profile {
+	name: string;
 	providers: readonly string[] | "all";
-	strategies: readonly string[];
 	status?: string;
 }
 
-export const profiles = {
-	"usa-no-train": {
-		providers: ["openai", "meridian", "google-vertex", "fireworks", "openrouter", "vercel-ai-gateway"],
-		strategies: ["openrouter", "fireworks", "vercel-ai-gateway"],
-	},
-	"claude-only": {
-		providers: ["meridian", "anthropic"],
-		strategies: [],
-		status: "[PROFILE: CLAUDE-ONLY]",
-	},
-	unrestricted: {
-		providers: "all",
-		strategies: [],
-		status: "[WARNING: UNRESTRICTED]",
-	},
-} satisfies Record<string, Profile>;
+const usaNoTrain: Profile = {
+	name: "usa-no-train",
+	providers: ["openai", "meridian", "google-vertex", "fireworks", "openrouter", "vercel-ai-gateway"],
+};
 
-export const profile: Profile =
-	Object.entries(profiles).find(([name]) => name === process.env.PI_DATASAFE_MODE)?.[1] ?? profiles["usa-no-train"];
+const profiles = new Map<string, Profile>([
+	[usaNoTrain.name, usaNoTrain],
+	["claude-only", { name: "claude-only", providers: ["meridian", "anthropic"], status: "[PROFILE: CLAUDE-ONLY]" }],
+	["unrestricted", { name: "unrestricted", providers: "all", status: "[WARNING: UNRESTRICTED]" }],
+]);
+
+export function resolveProfile(mode: string | undefined): Profile {
+	if (!mode) return usaNoTrain;
+
+	return (
+		profiles.get(mode) ?? {
+			...usaNoTrain,
+			status: `[WARNING: UNKNOWN DATASAFE MODE ${mode}, USING USA-NO-TRAIN]`,
+		}
+	);
+}

@@ -1,12 +1,10 @@
-import type { Api, Model } from "@earendil-works/pi-ai";
+import { isModelType, type AnyModel, type Api, type Model } from "@earendil-works/pi-ai";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
-export const FIREWORKS_PROVIDER = "fireworks";
-
 export const FIREWORKS_BASE_URL = "https://us.api.fireworks.ai/inference/v1";
 
-export const FIREWORKS_US_DOCS_URL = "https://docs.fireworks.ai/serverless/us-only-serverless.md";
+const FIREWORKS_US_DOCS_URL = "https://docs.fireworks.ai/serverless/us-only-serverless.md";
 
 const FIREWORKS_MODELS_URL = `${FIREWORKS_BASE_URL}/models`;
 
@@ -27,7 +25,11 @@ type ApiModel = Static<typeof ApiModel>;
 
 const ApiCatalog = Type.Object({ data: Type.Array(ApiModel) });
 
-export function parseUSModelCatalog(markdown: string): CatalogEntry[] {
+function isUSModelId(id: string): boolean {
+	return id === "accounts/fireworks/models/muse-spark-open" || US_MODEL_ID.test(id);
+}
+
+function parseUSModelCatalog(markdown: string): CatalogEntry[] {
 	const heading = markdown.match(/^## Available models\s*$/m);
 
 	if (heading?.index === undefined) {
@@ -64,32 +66,28 @@ function metadataIdCandidates(usId: string): string[] {
 	return [baseId, alternateKind];
 }
 
-export function buildUSModels(entries: CatalogEntry[], apiModels: ApiModel[]): FireworksModel[] {
+function buildUSModels(entries: CatalogEntry[], apiModels: ApiModel[]): FireworksModel[] {
 	const metadata = new Map<string, ApiModel>();
 
-	for (const model of apiModels) if (Value.Check(Type.String(), model.id)) metadata.set(model.id, model);
+	for (const model of apiModels) if (model.id !== undefined) metadata.set(model.id, model);
 
 	const models = entries.flatMap(({ id, name }): FireworksModel[] => {
 		const details = metadataIdCandidates(id)
 			.map((candidate) => metadata.get(candidate))
 			.find(Boolean);
 
-		if (
-			!details ||
-			!Value.Check(Type.Boolean(), details.supports_chat) ||
-			!Value.Check(Type.Number({ exclusiveMinimum: 0 }), details.context_length)
-		) {
+		if (details?.supports_chat === undefined || details.context_length === undefined || details.context_length <= 0) {
 			throw new Error(`Fireworks returned no usable chat metadata for US-only model: ${id}`);
 		}
 
-		if (details.supports_chat === false) return [];
+		if (!details.supports_chat) return [];
 
 		return [
 			{
 				id,
 				name: `${name} (Fireworks US-only)`,
 				api: "openai-completions",
-				provider: FIREWORKS_PROVIDER,
+				provider: "fireworks",
 				baseUrl: FIREWORKS_BASE_URL,
 				reasoning: true,
 				input: details.supports_image_input === true ? ["text", "image"] : ["text"],
@@ -111,17 +109,10 @@ export function buildUSModels(entries: CatalogEntry[], apiModels: ApiModel[]): F
 	return models;
 }
 
-export async function fetchUSModels(
-	apiKey: string,
-	signal: AbortSignal,
-	fetcher: typeof fetch = fetch,
-): Promise<FireworksModel[]> {
+export async function fetchUSModels(apiKey: string, signal: AbortSignal): Promise<FireworksModel[]> {
 	const [docsResponse, modelsResponse] = await Promise.all([
-		fetcher(FIREWORKS_US_DOCS_URL, { signal }),
-		fetcher(FIREWORKS_MODELS_URL, {
-			signal,
-			headers: { Authorization: `Bearer ${apiKey}` },
-		}),
+		fetch(FIREWORKS_US_DOCS_URL, { signal }),
+		fetch(FIREWORKS_MODELS_URL, { signal, headers: { Authorization: `Bearer ${apiKey}` } }),
 	]);
 
 	if (!docsResponse.ok) throw new Error(`Fireworks US-only documentation returned HTTP ${docsResponse.status}`);
@@ -135,44 +126,13 @@ export async function fetchUSModels(
 	return buildUSModels(parseUSModelCatalog(await docsResponse.text()), payload.data);
 }
 
-export function isUSModelId(id: unknown): id is string {
-	return (
-		id === "accounts/fireworks/models/muse-spark-open" || Value.Check(Type.String({ pattern: US_MODEL_ID.source }), id)
-	);
-}
-
-export function cachedUSModels(models: readonly Model<Api>[]): FireworksModel[] {
+export function cachedUSModels(models: readonly AnyModel[]): Model<Api>[] {
 	return models.filter(
-		(model): model is FireworksModel =>
-			model.provider === FIREWORKS_PROVIDER &&
+		(model): model is Model<Api> =>
+			isModelType(model, "chat") &&
+			model.provider === "fireworks" &&
 			model.api === "openai-completions" &&
 			model.baseUrl === FIREWORKS_BASE_URL &&
 			isUSModelId(model.id),
 	);
-}
-
-export class USModelCatalog {
-	#models: FireworksModel[] = [];
-	#allowedIds = new Set<string>();
-
-	getModels(): readonly FireworksModel[] {
-		return this.#models;
-	}
-
-	replace(nextModels: readonly Model<Api>[]) {
-		const models = cachedUSModels(nextModels);
-
-		if (models.length !== nextModels.length) {
-			throw new Error("Refusing invalid cached Fireworks US-only catalog");
-		}
-
-		this.#models = models;
-		this.#allowedIds = new Set(nextModels.map(({ id }) => id));
-	}
-
-	assertAllowed(model: unknown): asserts model is string {
-		if (!Value.Check(Type.String(), model) || !this.#allowedIds.has(model)) {
-			throw new Error(`Blocked model outside current Fireworks US-only catalog: ${String(model)}`);
-		}
-	}
 }

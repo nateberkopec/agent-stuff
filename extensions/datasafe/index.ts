@@ -1,52 +1,26 @@
-import type { Api, Model, Provider } from "@earendil-works/pi-ai";
+import type { Provider } from "@earendil-works/pi-ai";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 import { type ExtensionAPI, type ExtensionContext, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { regionalInferenceBaseUrl } from "./catalog.ts";
-import { registerFireworksUS, assertFireworksUSModel } from "./fireworks.ts";
-import { registerOpenRouterUS, denyOpenRouterCollection } from "./openrouter.ts";
-import { profile } from "./profiles.ts";
-import { applyUSInferenceRegion, createVercelUSProvider } from "./vercel.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { RequestPayload } from "./payload.ts";
+import { createFireworksUSProvider } from "./fireworks.ts";
+import { pinEndpoints, type Policy } from "./guard.ts";
+import { createOpenRouterUSProvider } from "./openrouter.ts";
+import { resolveProfile } from "./profiles.ts";
+import { vercelUSPolicy } from "./vercel.ts";
+import { vertexUSPolicy } from "./vertex.ts";
 
-type Strategy = {
-	install: (pi: ExtensionAPI, builtins: readonly Provider[]) => void | Promise<void>;
-	request: (payload: RequestPayload, model: Model<Api>) => RequestPayload | undefined;
-};
+const regionalCatalogs = new Map<string, (raw: Provider) => Provider>([
+	["fireworks", createFireworksUSProvider],
+	["openrouter", createOpenRouterUSProvider],
+]);
 
-const strategies = {
-	openrouter: {
-		install: (pi) => registerOpenRouterUS(pi),
-		request: (payload, model) => {
-			if (model.baseUrl !== regionalInferenceBaseUrl(model, "https://us.openrouter.ai/api/v1")) {
-				throw new Error("Datasafe blocked OpenRouter endpoint");
-			}
-
-			return denyOpenRouterCollection(payload);
-		},
-	},
-	fireworks: {
-		install: (pi) => registerFireworksUS(pi),
-		request: (payload, model) => {
-			assertFireworksUSModel(payload.model);
-
-			if (model.baseUrl !== "https://us.api.fireworks.ai/inference/v1")
-				throw new Error("Datasafe blocked Fireworks endpoint");
-		},
-	},
-	"vercel-ai-gateway": {
-		install: (pi, builtins) => {
-			const provider = builtins.find(({ id }) => id === "vercel-ai-gateway");
-
-			if (!provider) throw new Error("Pi does not provide the built-in Vercel gateway provider");
-			pi.registerProvider(createVercelUSProvider(provider));
-		},
-		request: (payload) => applyUSInferenceRegion(payload),
-	},
-} satisfies Record<string, Strategy>;
+const policies = new Map<string, Policy>([
+	["google-vertex", vertexUSPolicy],
+	["vercel-ai-gateway", vercelUSPolicy],
+]);
 
 async function configuredProviderIds(): Promise<string[]> {
 	try {
@@ -59,8 +33,8 @@ async function configuredProviderIds(): Promise<string[]> {
 	}
 }
 
-export async function refreshSubagentModels(ctx: ExtensionContext) {
-	const providers = profile.strategies.filter((id) => id === "fireworks" || id === "openrouter");
+async function refreshRegionalCatalogs(ctx: ExtensionContext, allowed: ReadonlySet<string>) {
+	const providers = [...regionalCatalogs.keys()].filter((id) => allowed.has(id));
 
 	if (providers.length === 0) return;
 	const result = await ctx.modelRegistry.refresh({ providers, allowNetwork: false, signal: ctx.signal });
@@ -73,49 +47,41 @@ export async function refreshSubagentModels(ctx: ExtensionContext) {
 }
 
 export default async function datasafe(pi: ExtensionAPI) {
-	const allowed = profile.providers === "all" ? undefined : new Set(profile.providers);
-
-	if (allowed) {
-		const builtins = builtinProviders();
-
-		for (const provider of builtins) {
-			if (!allowed.has(provider.id)) pi.registerProvider(provider.id, { models: [] });
-		}
-
-		for (const id of await configuredProviderIds()) {
-			if (!allowed.has(id) && !builtins.some((provider) => provider.id === id)) {
-				pi.registerProvider(id, { models: [] });
-			}
-		}
-
-		for (const id of profile.strategies) {
-			const strategy = Object.entries(strategies).find(([name]) => name === id)?.[1];
-
-			if (!strategy) throw new Error(`Unknown datasafe provider strategy: ${id}`);
-			await strategy.install(pi, builtins);
-		}
-	}
-
-	pi.on("before_provider_request", (event, ctx) => {
-		if (!allowed) return;
-		const model = ctx.model;
-
-		if (!model || !allowed.has(model.provider)) return null;
-
-		const strategy = Object.entries(strategies).find(([name]) => name === model.provider)?.[1];
-
-		if (!strategy || !profile.strategies.includes(model.provider)) return;
-
-		if (!Value.Check(RequestPayload, event.payload)) throw new Error("Datasafe blocked an invalid provider payload");
-
-		return strategy.request(event.payload, model);
-	});
-
-	pi.on("tool_call", async (event, ctx) => {
-		if (event.toolName === "subagent") await refreshSubagentModels(ctx);
-	});
+	const profile = resolveProfile(process.env.PI_DATASAFE_MODE);
 
 	pi.on("session_start", (_event, ctx) => {
 		if (ctx.mode === "tui" && profile.status) ctx.ui.setStatus("datasafe", profile.status);
+	});
+
+	if (profile.providers === "all") return;
+	const allowed = new Set(profile.providers);
+	const builtins = builtinProviders();
+
+	for (const provider of builtins) {
+		const catalog = regionalCatalogs.get(provider.id);
+
+		if (!allowed.has(provider.id)) pi.registerProvider(provider.id, { models: [] });
+		else if (catalog) pi.registerProvider(catalog(provider));
+		else pi.registerProvider(provider.id, pinEndpoints(provider, policies.get(provider.id)));
+	}
+
+	for (const id of await configuredProviderIds()) {
+		if (!allowed.has(id) && !builtins.some((provider) => provider.id === id)) {
+			pi.registerProvider(id, { models: [] });
+		}
+	}
+
+	pi.on("before_provider_request", (_event, ctx) => {
+		const provider = ctx.model?.provider;
+
+		if (provider && allowed.has(provider)) return;
+		ctx.ui.notify(`Datasafe blocked ${provider ?? "an unknown provider"} outside the ${profile.name} profile`, "error");
+		ctx.abort();
+
+		return null;
+	});
+
+	pi.on("tool_call", async (event, ctx) => {
+		if (event.toolName === "subagent") await refreshRegionalCatalogs(ctx, allowed);
 	});
 }

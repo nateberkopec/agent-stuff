@@ -1,9 +1,9 @@
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
-export const RegionalCatalog = Type.Object({ data: Type.Array(Type.Object({ id: Type.String() })) });
+const RegionalCatalog = Type.Object({ data: Type.Array(Type.Object({ id: Type.String() })) });
 
-export type RegionalCatalog = Static<typeof RegionalCatalog>;
+type RegionalCatalog = Static<typeof RegionalCatalog>;
 
 interface CatalogModel {
 	id: string;

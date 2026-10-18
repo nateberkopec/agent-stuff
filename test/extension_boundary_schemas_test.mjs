@@ -3,7 +3,6 @@ import { test } from "node:test";
 import { Value } from "typebox/value";
 import { ChatMessage } from "../extensions/shared/chat_message.ts";
 import { FleetStatusReply } from "../extensions/shared/subagent_status.ts";
-import { RequestPayload } from "../extensions/datasafe/payload.ts";
 
 test("chat replay preserves SDK system sections and tool declarations", () => {
 	const message = {
@@ -48,24 +47,4 @@ test("fleet status requires the complete success envelope and a safe active coun
 	}
 
 	assert.equal(Value.Check(FleetStatusReply, { ...reply(0), success: false }), false);
-});
-
-test("provider payloads retain JSON options but reject malformed routing controls", () => {
-	assert.equal(
-		Value.Check(RequestPayload, {
-			model: "model",
-			provider: { order: ["provider"], allow_fallbacks: false },
-			providerOptions: { gateway: { inferenceRegion: "usa" } },
-		}),
-		true,
-	);
-
-	for (const payload of [
-		{ model: [] },
-		{ provider: [] },
-		{ providerOptions: { gateway: "usa" } },
-		{ provider: { callback() {} } },
-	]) {
-		assert.equal(Value.Check(RequestPayload, payload), false);
-	}
 });

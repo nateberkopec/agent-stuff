@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -33,6 +33,7 @@ function model(id = "gpt-6.1-sol", provider = "openai") {
 		provider,
 		api: provider === "openai-codex" ? "openai-codex-responses" : "openai-responses",
 		maxTokens: 64_000,
+		reasoning: true,
 		cost: { input: 2, output: 8, cacheRead: 1, cacheWrite: 4 },
 	};
 }
@@ -92,7 +93,14 @@ function harness(t, config = {}) {
 	const ctx = {
 		cwd: join(root, "project"),
 		model: model(),
-		sessionManager: { getEntries: () => [], getBranch: () => [] },
+		isProjectTrusted: () => true,
+		sessionManager: { getEntries: () => [], getBranch: () => [], getSessionId: () => root },
+		modelRegistry: {
+			getRegisteredProviderConfig: (name) => providers.get(name),
+			getRegisteredNativeProvider: () => undefined,
+			registerProvider: (name, provider) => providers.set(name, { ...providers.get(name), ...provider }),
+			unregisterProvider: (name) => providers.delete(name),
+		},
 		ui: { setStatus: (key, text) => statuses.set(key, text), notify() {} },
 	};
 
@@ -102,6 +110,8 @@ function harness(t, config = {}) {
 		registerProvider: (name, provider) => providers.set(name, provider),
 		appendEntry() {},
 	});
+
+	t.after(() => handlers.get("session_shutdown")({}, ctx));
 
 	return {
 		ctx,
@@ -114,7 +124,7 @@ function harness(t, config = {}) {
 		},
 		emit: (name) => handlers.get(name)({ reason: "new" }, ctx),
 		command: (args) => commands.get("fast").handler(args, ctx),
-		stream: () => providers.get(ctx.model.provider).streamSimple(ctx.model, { messages: [] }, {}),
+		stream: (options = {}) => providers.get(ctx.model.provider).streamSimple(ctx.model, { messages: [] }, options),
 	};
 }
 
@@ -134,7 +144,7 @@ function assertPricing(h, result, multiplier) {
 test("reads global fast-mode config from PI_CODING_AGENT_DIR and preserves project overrides", async (t) => {
 	const h = harness(t, { active: true });
 	await h.emit("session_start");
-	assertPricing(h, await h.stream().result(), 2);
+	assertPricing(h, await h.stream().result(), 2.5);
 	assert.equal(h.calls.at(-1).options.serviceTier, "priority");
 
 	mkdirSync(dirname(h.projectPath), { recursive: true });
@@ -143,12 +153,21 @@ test("reads global fast-mode config from PI_CODING_AGENT_DIR and preserves proje
 	await h.stream().result();
 	assert.equal(h.statuses.get("fast-mode"), undefined);
 	assert.equal(h.calls.at(-1).options.serviceTier, undefined);
+
+	h.ctx.isProjectTrusted = () => false;
+	await h.emit("session_start");
+	assertPricing(h, await h.stream().result(), 2.5);
+	writeFileSync(h.globalPath, JSON.stringify({ active: true, futureKey: { preserved: true } }));
+	await h.command("default off");
+	assert.deepEqual(JSON.parse(readFileSync(h.globalPath, "utf8")), { active: false, futureKey: { preserved: true } });
+	assert.deepEqual(JSON.parse(readFileSync(h.projectPath, "utf8")), { active: false });
 });
 
 test("/fast injects priority only while active and for models surviving allowlist and blocklist", async (t) => {
 	const h = harness(t, {
 		allowlist: ["openai/custom-model"],
 		blocklist: ["openai/gpt-6-luna"],
+		multipliers: { "openai/custom-model": 2.5 },
 	});
 
 	await h.emit("session_start");
@@ -156,10 +175,10 @@ test("/fast injects priority only while active and for models surviving allowlis
 	assert.equal(h.calls.at(-1).options.serviceTier, undefined);
 
 	await h.command("on");
-	assertPricing(h, await h.stream().result(), 2);
+	assertPricing(h, await h.stream().result(), 2.5);
 	assert.equal(h.calls.at(-1).options.serviceTier, "priority");
 
-	for (const id of ["gpt-6-luna", "unsupported"]) {
+	for (const id of ["gpt-6-luna", "gpt-6-sol", "unsupported"]) {
 		h.ctx.model = model(id);
 		await h.emit("model_select");
 		await h.stream().result();
@@ -169,30 +188,56 @@ test("/fast injects priority only while active and for models surviving allowlis
 
 	h.ctx.model = model("custom-model");
 	await h.emit("model_select");
-	assertPricing(h, await h.stream().result(), 2);
+	assertPricing(h, await h.stream().result(), 2.5);
 	assert.equal(h.calls.at(-1).options.serviceTier, "priority");
 
 	await h.command("off");
 	await h.stream().result();
 	assert.equal(h.calls.at(-1).options.serviceTier, undefined);
 	assert.equal(h.statuses.get("fast-mode"), undefined);
+	await h.stream({ reasoningEffort: "high" }).result();
+	assert.equal(h.calls.at(-1).options.reasoningEffort, "high");
+	await h.stream({ reasoningEffort: "high", reasoning: "low" }).result();
+	assert.equal(h.calls.at(-1).options.reasoningEffort, "low");
+
+	h.ctx.model = model();
+	await h.command("on");
+	const registry = h.ctx.modelRegistry;
+	const original = registry.getRegisteredProviderConfig("openai");
+
+	const competing = {
+		api: "openai-responses",
+		streamSimple() {
+			throw new Error("Competing provider");
+		},
+	};
+
+	registry.registerProvider("openai", competing);
+	await h.emit("turn_start");
+	assert.equal(h.statuses.get("fast-mode"), undefined);
+	await original.streamSimple(h.ctx.model, { messages: [] }, {}).result();
+	assert.equal(h.calls.at(-1).options.serviceTier, undefined);
+	registry.registerProvider("openai", original);
+	await h.emit("turn_start");
+	assertPricing(h, await h.stream().result(), 2.5);
+	registry.registerProvider("openai", { headers: { "x-test": "preserved" } });
+	await h.emit("session_shutdown");
+	assert.deepEqual(registry.getRegisteredProviderConfig("openai"), { headers: { "x-test": "preserved" } });
 });
 
-test("footer and terminal done/error costs agree for every built-in model and fallback", async (t) => {
-	const h = harness(t, { allowlist: ["openai/custom-model"] });
+test("footer and terminal done/error costs agree for established and configured subscription rates", async (t) => {
+	const h = harness(t, { allowlist: ["openai/custom-model"], multipliers: { "openai/custom-model": 1 } });
 	await h.command("on");
 
 	const rates = [
-		["openai", "gpt-6.1-sol", 2],
-		["openai", "gpt-6-sol", 2],
-		["openai", "gpt-6-astra", 2],
-		["openai", "gpt-6-luna", 2],
-		["openai", "custom-model", 2],
+		["openai", "gpt-6.1-sol", 2.5],
+		["openai", "gpt-6-astra", 2.5],
+		["openai", "custom-model", 1],
 		["openai-codex", "gpt-5.6-sol", 2.5],
 		["openai-codex", "gpt-5.6-terra", 2.5],
 		["openai-codex", "gpt-5.6-luna", 2.5],
-		["openai-codex", "gpt-5.5", 2.5],
-		["openai-codex", "gpt-5.4", 2],
+		["openai-codex", "gpt-6.1-sol", 2.5],
+		["openai-codex", "gpt-6-astra", 2.5],
 	];
 
 	for (const [provider, id, multiplier] of rates) {
@@ -256,7 +301,7 @@ test(
 			assert.equal(result.provider, h.ctx.model.provider);
 			assert.equal(result.api, h.ctx.model.api);
 
-			if (failure === "partial") assertPricing(h, result, 2);
+			if (failure === "partial") assertPricing(h, result, 2.5);
 			else assert.equal(result.usage.cost.total, 0);
 		}
 

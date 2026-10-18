@@ -8,8 +8,14 @@ import {
 	type ExtensionAPI,
 	type SessionEntry,
 	type ExtensionContext,
+	type ModelRegistry,
 } from "@earendil-works/pi-coding-agent";
-import { calculateCost, clampThinkingLevel, createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+import {
+	calculateCost,
+	clampThinkingLevel,
+	createAssistantMessageEventStream,
+	registerSessionResourceCleanup,
+} from "@earendil-works/pi-ai";
 import { openAICodexResponsesApi, openAIResponsesApi } from "@earendil-works/pi-ai/compat";
 import type {
 	Api,
@@ -45,6 +51,8 @@ const SESSION_STATE_TYPE = "fast-mode-state";
 
 /** Official Codex fast-mode credit multipliers per model (OpenAI Codex rate card). */
 const OFFICIAL_FAST_MULTIPLIER = new Map([
+	["gpt-6.1-sol", 2.5],
+	["gpt-6-astra", 2.5],
 	["gpt-5.6-sol", 2.5],
 	["gpt-5.6-terra", 2.5],
 	["gpt-5.6-luna", 2.5],
@@ -78,8 +86,8 @@ const PROVIDER_OVERLAYS: readonly ProviderOverlay[] = [
 			"openai-codex/gpt-5.6-sol",
 			"openai-codex/gpt-5.6-terra",
 			"openai-codex/gpt-5.6-luna",
-			"openai-codex/gpt-5.5",
-			"openai-codex/gpt-5.4",
+			"openai-codex/gpt-6.1-sol",
+			"openai-codex/gpt-6-astra",
 		],
 		streamRaw: (model, context, options) => openAICodexResponsesApi().stream(model, context, options),
 	},
@@ -110,6 +118,7 @@ interface ConfigFile {
 	serviceTier?: "priority";
 	allowlist?: SupportedModel[];
 	blocklist?: SupportedModel[];
+	multipliers?: Record<string, number>;
 }
 
 interface ResolvedConfig {
@@ -118,6 +127,7 @@ interface ResolvedConfig {
 	active: boolean;
 	allowlist: SupportedModel[];
 	blocklist: SupportedModel[];
+	multipliers: Record<string, number>;
 }
 
 interface RuntimeState {
@@ -129,6 +139,7 @@ const DEFAULT_CONFIG: Omit<ResolvedConfig, "configPath"> = {
 	active: false,
 	allowlist: [],
 	blocklist: [],
+	multipliers: {},
 };
 
 const StoredState = Type.Object({ active: Type.Boolean(), serviceTier: Type.String() });
@@ -139,6 +150,7 @@ const ConfigInput = Type.Object({
 	serviceTier: Type.Optional(WireValue),
 	allowlist: Type.Optional(WireValue),
 	blocklist: Type.Optional(WireValue),
+	multipliers: Type.Optional(WireValue),
 });
 
 /** Restore the latest fast-mode state on the active session branch. */
@@ -179,6 +191,21 @@ function parseModels(value: WireValue): SupportedModel[] | undefined {
 	return [...models.values()];
 }
 
+function parseMultipliers(value: WireValue): Record<string, number> | undefined {
+	if (!Value.Check(Type.Record(Type.String(), WireValue), value)) return undefined;
+	const multipliers: Record<string, number> = {};
+
+	for (const [key, multiplier] of Object.entries(value)) {
+		const model = parseModelKey(key);
+
+		if (model && Value.Check(Type.Number({ exclusiveMinimum: 0 }), multiplier) && Number.isFinite(multiplier)) {
+			multipliers[`${model.provider}/${model.id}`] = multiplier;
+		}
+	}
+
+	return multipliers;
+}
+
 function configPaths(cwd: string) {
 	return {
 		project: join(cwd, ".pi", "extensions", CONFIG_BASENAME),
@@ -206,6 +233,9 @@ function readConfig(path: string): ConfigFile | undefined {
 		const blocklist = parseModels(parsed.blocklist);
 
 		if (blocklist !== undefined) config.blocklist = blocklist;
+		const multipliers = parseMultipliers(parsed.multipliers);
+
+		if (multipliers !== undefined) config.multipliers = multipliers;
 
 		return config;
 	} catch (error) {
@@ -216,38 +246,29 @@ function readConfig(path: string): ConfigFile | undefined {
 	}
 }
 
-function writeConfig(path: string, config: ConfigFile): void {
+function writeConfig(path: string, active: boolean): void {
 	try {
+		const raw = existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : {};
+
+		if (!Value.Check(Type.Record(Type.String(), WireValue), raw)) throw new Error("Expected a config object");
 		mkdirSync(dirname(path), { recursive: true });
-		writeFileSync(
-			path,
-			`${JSON.stringify(
-				{
-					...config,
-					allowlist: config.allowlist?.map((model) => `${model.provider}/${model.id}`),
-					blocklist: config.blocklist?.map((model) => `${model.provider}/${model.id}`),
-				},
-				null,
-				2,
-			)}\n`,
-			"utf8",
-		);
+		writeFileSync(path, `${JSON.stringify({ ...raw, active }, null, 2)}\n`, "utf8");
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		console.warn(`[${STATUS_KEY}] Failed to write ${path}: ${message}`);
+		throw new Error(`[${STATUS_KEY}] Failed to write ${path}: ${message}`, { cause: error });
 	}
 }
 
-function resolveConfig(cwd: string): ResolvedConfig {
+function resolveConfig(cwd: string, trusted: boolean): ResolvedConfig {
 	const paths = configPaths(cwd);
 	const globalConfig = readConfig(paths.global) ?? {};
-	const projectConfig = readConfig(paths.project) ?? {};
+	const projectConfig = trusted ? (readConfig(paths.project) ?? {}) : {};
 
 	return {
 		...DEFAULT_CONFIG,
 		...globalConfig,
 		...projectConfig,
-		configPath: existsSync(paths.project) ? paths.project : paths.global,
+		configPath: trusted && existsSync(paths.project) ? paths.project : paths.global,
 	};
 }
 
@@ -264,20 +285,15 @@ function isFastModeActive(
 	return (
 		state.active &&
 		model !== undefined &&
-		PROVIDER_OVERLAYS.some((overlay) => overlay.api === model.api) &&
+		PROVIDER_OVERLAYS.some((overlay) => overlay.provider === model.provider && overlay.api === model.api) &&
+		fastModeMultiplier(model, config) !== undefined &&
 		(contains(DEFAULT_MODELS, model) || contains(config.allowlist, model)) &&
 		!contains(config.blocklist, model)
 	);
 }
 
-/**
- * Official fast-mode credit multiplier for a model, from the OpenAI Codex rate
- * card. Falls back to pi-ai's 2x default for models without a published rate.
- */
-function fastModeMultiplier(modelId: string): number {
-	const fallbackMultiplier = 2;
-
-	return OFFICIAL_FAST_MULTIPLIER.get(modelId) ?? fallbackMultiplier;
+function fastModeMultiplier(model: Pick<Model<Api>, "provider" | "id">, config: ResolvedConfig): number | undefined {
+	return config.multipliers[`${model.provider}/${model.id}`] ?? OFFICIAL_FAST_MULTIPLIER.get(model.id);
 }
 
 /**
@@ -369,14 +385,15 @@ function buildFullOpenAIOptions(
 	options: SimpleStreamOptions | undefined,
 	serviceTier: "priority" | undefined,
 ): PriorityStreamOptions {
-	const clampedReasoning = options?.reasoning ? clampThinkingLevel(model, options.reasoning) : undefined;
-	const reasoningEffort = clampedReasoning === "off" ? undefined : clampedReasoning;
-
 	const result: PriorityStreamOptions = {
 		...options,
 		maxTokens: options?.maxTokens ?? (model.maxTokens > 0 ? Math.min(model.maxTokens, 32_000) : undefined),
-		reasoningEffort,
 	};
+
+	if (options?.reasoning !== undefined) {
+		const clampedReasoning = clampThinkingLevel(model, options.reasoning);
+		result.reasoningEffort = clampedReasoning === "off" ? undefined : clampedReasoning;
+	}
 
 	if (serviceTier) result.serviceTier = serviceTier;
 
@@ -386,9 +403,129 @@ function buildFullOpenAIOptions(
 export default function piFastMode(pi: ExtensionAPI): void {
 	let config: ResolvedConfig = { ...DEFAULT_CONFIG, configPath: configPaths(process.cwd()).global };
 	let state: RuntimeState = { active: config.active };
+	let registry: ModelRegistry | undefined;
+	let sessionId: string | undefined;
+	let unregisterCleanup: (() => void) | undefined;
+	let generation = 0;
+	const overlays = new Map<string, { inDispatchPath: () => boolean; release: () => void }>();
+
+	function cleanup(): void {
+		state = { active: false };
+		generation += 1;
+
+		for (const overlay of overlays.values()) overlay.release();
+		overlays.clear();
+		registry = undefined;
+		sessionId = undefined;
+		unregisterCleanup?.();
+		unregisterCleanup = undefined;
+	}
+
+	function syncOverlays(ctx: ExtensionContext): void {
+		const id = ctx.sessionManager.getSessionId();
+
+		if (registry !== ctx.modelRegistry || sessionId !== id) {
+			const active = state;
+			cleanup();
+			state = active;
+			registry = ctx.modelRegistry;
+			sessionId = id;
+			unregisterCleanup = registerSessionResourceCleanup((disposedId) => {
+				if (disposedId === undefined || disposedId === sessionId) cleanup();
+			});
+		}
+
+		const currentRegistry = ctx.modelRegistry;
+		const installedGeneration = generation;
+
+		for (const spec of PROVIDER_OVERLAYS) {
+			if (overlays.get(spec.provider)?.inDispatchPath()) continue;
+			const original = currentRegistry.getRegisteredProviderConfig(spec.provider);
+
+			if (
+				currentRegistry.getRegisteredNativeProvider(spec.provider) ||
+				original?.streamSimple ||
+				original?.refreshModels ||
+				original?.oauth?.modifyModels ||
+				(original?.api !== undefined && original.api !== spec.api)
+			)
+				continue;
+
+			const observer = (
+				stream: NonNullable<ReturnType<ModelRegistry["getRegisteredProviderConfig"]>>["streamSimple"],
+			) => {
+				if (!stream) return undefined;
+
+				const descriptor = Object.getOwnPropertyDescriptor(
+					stream,
+					Symbol.for("@nijaru/pi-provider-compaction/stream-observer"),
+				);
+
+				const marker: unknown = descriptor?.enumerable === false ? descriptor.value : undefined;
+
+				if (
+					!Value.Check(Type.Object({ delegate: Type.Unknown(), release: Type.Function([], Type.Void()) }), marker) ||
+					marker.delegate !== streamSimple
+				)
+					return undefined;
+
+				return marker;
+			};
+
+			const inDispatchPath = () => {
+				const current = currentRegistry.getRegisteredProviderConfig(spec.provider);
+
+				return (
+					!currentRegistry.getRegisteredNativeProvider(spec.provider) &&
+					current?.api === spec.api &&
+					(current.streamSimple === streamSimple || observer(current.streamSimple) !== undefined)
+				);
+			};
+
+			const streamSimple = (model: Model<Api>, context: TranscriptContext, options?: SimpleStreamOptions) => {
+				const multiplier = fastModeMultiplier(model, config);
+
+				const active =
+					installedGeneration === generation &&
+					inDispatchPath() &&
+					isFastModeActive(model, state, config) &&
+					multiplier !== undefined;
+
+				const stream = spec.streamRaw(
+					model,
+					context,
+					buildFullOpenAIOptions(model, options, active ? "priority" : undefined),
+				);
+
+				return active ? withFastModePricing(stream, model, multiplier) : stream;
+			};
+
+			currentRegistry.registerProvider(spec.provider, { api: spec.api, streamSimple });
+			overlays.set(spec.provider, {
+				inDispatchPath,
+				release() {
+					observer(currentRegistry.getRegisteredProviderConfig(spec.provider)?.streamSimple)?.release();
+
+					if (
+						!inDispatchPath() ||
+						currentRegistry.getRegisteredProviderConfig(spec.provider)?.streamSimple !== streamSimple
+					)
+						return;
+					const restored = { ...currentRegistry.getRegisteredProviderConfig(spec.provider) };
+					delete restored.streamSimple;
+
+					if (original?.api === undefined) delete restored.api;
+					else restored.api = original.api;
+					currentRegistry.unregisterProvider(spec.provider);
+
+					if (Object.keys(restored).length) currentRegistry.registerProvider(spec.provider, restored);
+				},
+			});
+		}
+	}
 
 	function refreshConfig(ctx: ExtensionContext): void {
-		config = resolveConfig(ctx.cwd || process.cwd());
+		config = resolveConfig(ctx.cwd || process.cwd(), ctx.isProjectTrusted());
 	}
 
 	function appendSessionState(): void {
@@ -424,10 +561,12 @@ export default function piFastMode(pi: ExtensionAPI): void {
 		appendSessionState();
 	}
 
-	function updateStatus(ctx: ExtensionContext): void {
+	function updateStatus(ctx: ExtensionContext, synchronize = true): void {
+		if (synchronize) syncOverlays(ctx);
+
 		const text =
-			ctx.model && isFastModeActive(ctx.model, state, config)
-				? `⚡ FAST · $ ${fastModeMultiplier(ctx.model.id)}×`
+			ctx.model && overlays.get(ctx.model.provider)?.inDispatchPath() && isFastModeActive(ctx.model, state, config)
+				? `⚡ FAST · $ ${fastModeMultiplier(ctx.model, config)}×`
 				: undefined;
 
 		ctx.ui.setStatus(STATUS_KEY, text);
@@ -444,6 +583,15 @@ export default function piFastMode(pi: ExtensionAPI): void {
 		const active = isFastModeActive(ctx.model, state, config);
 		const modelKey = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "none";
 
+		if (active && ctx.model && !overlays.get(ctx.model.provider)?.inDispatchPath()) {
+			ctx.ui.notify(
+				`Fast mode is on, but inactive: another provider or stream owns ${ctx.model.provider}. Disable the competing provider extension and reload to use /fast.`,
+				"warning",
+			);
+
+			return;
+		}
+
 		if (active) {
 			ctx.ui.notify(
 				`Fast mode: priority service tier for ${modelKey}. Cost accounting includes the priority multiplier.`,
@@ -454,6 +602,21 @@ export default function piFastMode(pi: ExtensionAPI): void {
 		}
 
 		if (state.active) {
+			if (
+				ctx.model &&
+				fastModeMultiplier(ctx.model, config) === undefined &&
+				PROVIDER_OVERLAYS.some((spec) => spec.provider === ctx.model?.provider && spec.api === ctx.model.api) &&
+				(contains(DEFAULT_MODELS, ctx.model) || contains(config.allowlist, ctx.model)) &&
+				!contains(config.blocklist, ctx.model)
+			) {
+				ctx.ui.notify(
+					`Fast mode is on, but ${modelKey} has no established fast-mode rate, so priority was not requested. Set "multipliers": { "${modelKey}": <multiplier> } in ${config.configPath} after verifying its subscription rate.`,
+					"warning",
+				);
+
+				return;
+			}
+
 			ctx.ui.notify(
 				`Fast mode is on, but ${modelKey} is not tierable (missing API spec, not on the default/allowlist, or blocked). Mentioned models: ${supportedListText()}.`,
 				"warning",
@@ -475,7 +638,7 @@ export default function piFastMode(pi: ExtensionAPI): void {
 
 	function setDefault(ctx: ExtensionContext, active: boolean): void {
 		refreshConfig(ctx);
-		writeConfig(config.configPath, { ...readConfig(config.configPath), active });
+		writeConfig(config.configPath, active);
 		refreshConfig(ctx);
 		ctx.ui.notify(
 			`Fast mode default: ${config.active ? "on" : "off"} for new sessions (${config.configPath}).`,
@@ -489,21 +652,6 @@ export default function piFastMode(pi: ExtensionAPI): void {
 			`Fast mode default is ${config.active ? "on" : "off"} for new sessions (${config.configPath}).`,
 			"info",
 		);
-	}
-
-	for (const spec of PROVIDER_OVERLAYS) {
-		// Overlay the built-in provider to preserve its models and authentication.
-		pi.registerProvider(spec.provider, {
-			api: spec.api,
-			streamSimple(model, context, options) {
-				const serviceTier = isFastModeActive(model, state, config) ? "priority" : undefined;
-				const stream = spec.streamRaw(model, context, buildFullOpenAIOptions(model, options, serviceTier));
-
-				if (!serviceTier) return stream;
-
-				return withFastModePricing(stream, model, fastModeMultiplier(model.id));
-			},
-		});
 	}
 
 	pi.registerCommand(COMMAND_FAST, {
@@ -593,7 +741,16 @@ export default function piFastMode(pi: ExtensionAPI): void {
 		updateStatus(ctx);
 	});
 
+	pi.on("turn_start", async (_event, ctx) => {
+		updateStatus(ctx);
+	});
+
+	pi.on("before_provider_request", async (_event, ctx) => {
+		updateStatus(ctx, false);
+	});
+
 	pi.on("session_shutdown", async (_event, ctx) => {
+		cleanup();
 		ctx.ui.setStatus(STATUS_KEY, undefined);
 	});
 }

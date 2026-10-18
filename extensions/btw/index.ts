@@ -1,4 +1,4 @@
-// Side-chat design adapted from mitsuhiko/agent-stuff/extensions/btw.ts (Apache-2.0; see LICENSE).
+// Side-chat design adapted from mitsuhiko/agent-stuff/extensions/btw.ts (Apache-2.0; see ../MITSUHIKO-AGENT-STUFF-LICENSE.txt).
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { SideChat } from "./thread.ts";
 

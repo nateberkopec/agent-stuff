@@ -1,6 +1,6 @@
 /**
  * Adapted from mitsuhiko/agent-stuff extensions/notify.ts at 0865c849befd2021490679f96a8dee58c84ac857.
- * Licensed under Apache-2.0; see NOTIFY-LICENSE.txt.
+ * Licensed under Apache-2.0; see MITSUHIKO-AGENT-STUFF-LICENSE.txt.
  *
  * Desktop Notification Extension
  *

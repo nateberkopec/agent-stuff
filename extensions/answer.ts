@@ -1,10 +1,7 @@
 /**
  * Vendored from mitsuhiko/agent-stuff extensions/answer.ts at 0865c849befd2021490679f96a8dee58c84ac857.
- * Licensed under Apache-2.0; see NOTIFY-LICENSE.txt.
+ * Licensed under Apache-2.0; see MITSUHIKO-AGENT-STUFF-LICENSE.txt.
  */
-
-// Keep the vendored implementation's parsing and formatting unchanged for upstream comparison.
-/* oxlint-disable anti-slop/no-runtime-typeof, anti-slop/no-unknown-parameters, anti-slop/no-unsafe-dictionary-type, anti-slop/require-readable-spacing, anti-slop/require-safety-comment-for-type-assertion */
 
 /**
  * Q&A extraction hook - extracts questions from assistant responses
@@ -17,7 +14,7 @@
  * 4. Submits the compiled answers when done
  */
 
-import { Type, parseJsonWithRepair, type Model, type Api, type UserMessage } from "@earendil-works/pi-ai";
+import { parseJsonWithRepair, type Model, type Api, type UserMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { BorderedLoader, defineTool } from "@earendil-works/pi-coding-agent";
 import {
@@ -31,6 +28,9 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
+
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 
 // Structured output format for question extraction
 interface ExtractedQuestion {
@@ -84,6 +84,7 @@ Example output:
 }`;
 
 const CODEX_MODEL_IDS = ["gpt-5.4-mini", "gpt-5.3-codex-spark", "gpt-5.4", "gpt-5.3-codex"];
+
 const HAIKU_MODEL_ID = "claude-haiku-4-5";
 
 /**
@@ -96,8 +97,10 @@ async function selectExtractionModel(
 ): Promise<Model<Api>> {
 	for (const modelId of CODEX_MODEL_IDS) {
 		const codexModel = modelRegistry.find("openai-codex", modelId);
+
 		if (codexModel) {
 			const auth = await modelRegistry.getApiKeyAndHeaders(codexModel);
+
 			if (auth.ok) {
 				return codexModel;
 			}
@@ -105,11 +108,13 @@ async function selectExtractionModel(
 	}
 
 	const haikuModel = modelRegistry.find("anthropic", HAIKU_MODEL_ID);
+
 	if (!haikuModel) {
 		return currentModel;
 	}
 
 	const auth = await modelRegistry.getApiKeyAndHeaders(haikuModel);
+
 	if (auth.ok === false) {
 		return currentModel;
 	}
@@ -117,40 +122,12 @@ async function selectExtractionModel(
 	return haikuModel;
 }
 
-function toExtractedQuestion(value: unknown): ExtractedQuestion | null {
-	if (typeof value !== "object" || value === null) {
-		return null;
-	}
-	const record = value as Record<string, unknown>;
-	const question = record.question;
-	const context = record.context;
-	if (typeof question !== "string") {
-		return null;
-	}
-	if (context !== undefined && context !== null && typeof context !== "string") {
-		return null;
-	}
-	return typeof context === "string" && context.length > 0 ? { question, context } : { question };
-}
-
-function toExtractionResult(value: unknown): ExtractionResult | null {
-	if (typeof value !== "object" || value === null) {
-		return null;
-	}
-	const record = value as Record<string, unknown>;
-	if (!Array.isArray(record.questions)) {
-		return null;
-	}
-	const questions: ExtractedQuestion[] = [];
-	for (const question of record.questions) {
-		const extractedQuestion = toExtractedQuestion(question);
-		if (!extractedQuestion) {
-			return null;
-		}
-		questions.push(extractedQuestion);
-	}
-	return { questions };
-}
+const ExtractedQuestions = Type.Object({
+	questions: Type.Array(Type.Object({
+		question: Type.String(),
+		context: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+	})),
+});
 
 /**
  * Parse the JSON response from the LLM.
@@ -158,6 +135,7 @@ function toExtractionResult(value: unknown): ExtractionResult | null {
 function parseExtractionResult(text: string): ExtractionResult | null {
 	const candidates: string[] = [];
 	const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+
 	if (jsonMatch) {
 		candidates.push(jsonMatch[1].trim());
 	}
@@ -167,15 +145,20 @@ function parseExtractionResult(text: string): ExtractionResult | null {
 
 	const firstBrace = trimmed.indexOf("{");
 	const lastBrace = trimmed.lastIndexOf("}");
+
 	if (firstBrace !== -1 && lastBrace > firstBrace) {
 		candidates.push(trimmed.slice(firstBrace, lastBrace + 1));
 	}
 
 	for (const candidate of candidates) {
 		try {
-			const result = toExtractionResult(parseJsonWithRepair<unknown>(candidate));
-			if (result) {
-				return result;
+			const result = parseJsonWithRepair<unknown>(candidate);
+
+			if (Value.Check(ExtractedQuestions, result)) {
+				return {
+					questions: result.questions.map(({ question, context }) =>
+						context ? { question, context } : { question }),
+				};
 			}
 		} catch {
 			// Try the next candidate.
@@ -263,6 +246,7 @@ class QnAComponent implements Component {
 
 	private allQuestionsAnswered(): boolean {
 		this.saveCurrentAnswer();
+
 		return this.answers.every((a) => (a?.trim() || "").length > 0);
 	}
 
@@ -283,13 +267,16 @@ class QnAComponent implements Component {
 
 		// Build the response text
 		const parts: string[] = [];
+
 		for (let i = 0; i < this.questions.length; i++) {
 			const q = this.questions[i];
 			const a = this.answers[i]?.trim() || "(no answer)";
 			parts.push(`Q: ${q.question}`);
+
 			if (q.context) {
 				parts.push(`> ${q.context}`);
 			}
+
 			parts.push(`A: ${a}`);
 			parts.push("");
 		}
@@ -311,20 +298,25 @@ class QnAComponent implements Component {
 		if (this.showingConfirmation) {
 			if (matchesKey(data, Key.enter) || data.toLowerCase() === "y") {
 				this.submit();
+
 				return;
 			}
+
 			if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c")) || data.toLowerCase() === "n") {
 				this.showingConfirmation = false;
 				this.invalidate();
 				this.tui.requestRender();
+
 				return;
 			}
+
 			return;
 		}
 
 		// Global navigation and commands
 		if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c"))) {
 			this.cancel();
+
 			return;
 		}
 
@@ -334,13 +326,16 @@ class QnAComponent implements Component {
 				this.navigateTo(this.currentIndex + 1);
 				this.tui.requestRender();
 			}
+
 			return;
 		}
+
 		if (matchesKey(data, Key.shift("tab"))) {
 			if (this.currentIndex > 0) {
 				this.navigateTo(this.currentIndex - 1);
 				this.tui.requestRender();
 			}
+
 			return;
 		}
 
@@ -350,13 +345,16 @@ class QnAComponent implements Component {
 			if (this.currentIndex > 0) {
 				this.navigateTo(this.currentIndex - 1);
 				this.tui.requestRender();
+
 				return;
 			}
 		}
+
 		if (matchesKey(data, Key.down) && this.editor.getText() === "") {
 			if (this.currentIndex < this.questions.length - 1) {
 				this.navigateTo(this.currentIndex + 1);
 				this.tui.requestRender();
+
 				return;
 			}
 		}
@@ -366,14 +364,17 @@ class QnAComponent implements Component {
 		// Shift+Enter adds a newline (handled by editor)
 		if (matchesKey(data, Key.enter) && !matchesKey(data, Key.shift("enter"))) {
 			this.saveCurrentAnswer();
+
 			if (this.currentIndex < this.questions.length - 1) {
 				this.navigateTo(this.currentIndex + 1);
 			} else {
 				// On last question - show confirmation
 				this.showingConfirmation = true;
 			}
+
 			this.invalidate();
 			this.tui.requestRender();
+
 			return;
 		}
 
@@ -400,6 +401,7 @@ class QnAComponent implements Component {
 			const paddedContent = " ".repeat(leftPad) + content;
 			const contentLen = visibleWidth(paddedContent);
 			const rightPad = Math.max(0, boxWidth - contentLen - 2);
+
 			return this.dim("│") + paddedContent + " ".repeat(rightPad) + this.dim("│");
 		};
 
@@ -409,6 +411,7 @@ class QnAComponent implements Component {
 
 		const padToWidth = (line: string): string => {
 			const len = visibleWidth(line);
+
 			return line + " ".repeat(Math.max(0, width - len));
 		};
 
@@ -420,9 +423,11 @@ class QnAComponent implements Component {
 
 		// Progress indicator
 		const progressParts: string[] = [];
+
 		for (let i = 0; i < this.questions.length; i++) {
 			const answered = (this.answers[i]?.trim() || "").length > 0;
 			const current = i === this.currentIndex;
+
 			if (current) {
 				progressParts.push(this.cyan("●"));
 			} else if (answered) {
@@ -431,6 +436,7 @@ class QnAComponent implements Component {
 				progressParts.push(this.dim("○"));
 			}
 		}
+
 		lines.push(padToWidth(boxLine(progressParts.join(" "))));
 		lines.push(padToWidth(emptyBoxLine()));
 
@@ -438,6 +444,7 @@ class QnAComponent implements Component {
 		const q = this.questions[this.currentIndex];
 		const questionText = `${this.bold("Q:")} ${q.question}`;
 		const wrappedQuestion = wrapTextWithAnsi(questionText, contentWidth);
+
 		for (const line of wrappedQuestion) {
 			lines.push(padToWidth(boxLine(line)));
 		}
@@ -447,6 +454,7 @@ class QnAComponent implements Component {
 			lines.push(padToWidth(emptyBoxLine()));
 			const contextText = this.gray(`> ${q.context}`);
 			const wrappedContext = wrapTextWithAnsi(contextText, contentWidth - 2);
+
 			for (const line of wrappedContext) {
 				lines.push(padToWidth(boxLine(line)));
 			}
@@ -459,6 +467,7 @@ class QnAComponent implements Component {
 		const answerPrefix = this.bold("A: ");
 		const editorWidth = contentWidth - 4 - 3; // Extra padding + space for "A: "
 		const editorLines = this.editor.render(editorWidth);
+
 		for (let i = 1; i < editorLines.length - 1; i++) {
 			if (i === 1) {
 				// First content line gets the "A: " prefix
@@ -481,10 +490,12 @@ class QnAComponent implements Component {
 			const controls = `${this.dim("Tab/Enter")} next · ${this.dim("Shift+Tab")} prev · ${this.dim("Shift+Enter")} newline · ${this.dim("Esc")} cancel`;
 			lines.push(padToWidth(boxLine(truncateToWidth(controls, contentWidth))));
 		}
+
 		lines.push(padToWidth(this.dim("╰" + horizontalLine(boxWidth - 2) + "╯")));
 
 		this.cachedWidth = width;
 		this.cachedLines = lines;
+
 		return lines;
 	}
 }
@@ -505,24 +516,31 @@ export default function (pi: ExtensionAPI) {
 			if (ctx.mode !== "tui") {
 				throw new Error("answer requires interactive terminal mode; ask the questions in chat instead.");
 			}
+
 			if (signal?.aborted) {
 				return { content: [{ type: "text", text: "Cancelled. Wait for the user to resume." }], details: { cancelled: true }, terminate: true };
 			}
+
 			let abortHandler: (() => void) | undefined;
 			let answers: string | null;
+
 			try {
 				answers = await ctx.ui.custom<string | null>((tui, _theme, _kb, done) => {
 					abortHandler = () => done(null);
 					signal?.addEventListener("abort", abortHandler, { once: true });
+
 					if (signal?.aborted) done(null);
+
 					return new QnAComponent(params.questions, tui, done);
 				});
 			} finally {
 				if (abortHandler) signal?.removeEventListener("abort", abortHandler);
 			}
+
 			if (answers === null) {
 				return { content: [{ type: "text", text: "Cancelled. Wait for the user to resume." }], details: { cancelled: true }, terminate: true };
 			}
+
 			return {
 				content: [{ type: "text", text: "The user answered your questions:\n\n" + answers }],
 				details: { cancelled: false, answers },
@@ -533,11 +551,13 @@ export default function (pi: ExtensionAPI) {
 	const answerHandler = async (ctx: ExtensionContext) => {
 			if (!ctx.hasUI) {
 				ctx.ui.notify("answer requires interactive mode", "error");
+
 				return;
 			}
 
 			if (!ctx.model) {
 				ctx.ui.notify("No model selected", "error");
+
 				return;
 			}
 
@@ -546,19 +566,25 @@ export default function (pi: ExtensionAPI) {
 
 			for (let i = branch.length - 1; i >= 0; i--) {
 				const entry = branch[i];
+
 				if (entry.type === "message") {
 					const msg = entry.message;
+
 					if (msg.role === "user" || (msg.role === "custom" && msg.customType === "answers")) {
 						break;
 					}
+
 					if (msg.role === "assistant") {
 						if (assistantTexts.length === 0 && msg.stopReason !== "stop") {
 							ctx.ui.notify(`Last assistant message incomplete (${msg.stopReason})`, "error");
+
 							return;
 						}
+
 						const textParts = msg.content
 							.filter((c): c is { type: "text"; text: string } => c.type === "text")
 							.map((c) => c.text);
+
 						if (textParts.length > 0 && msg.stopReason === "stop") {
 							assistantTexts.unshift(textParts.join("\n"));
 						}
@@ -568,6 +594,7 @@ export default function (pi: ExtensionAPI) {
 
 			if (assistantTexts.length === 0) {
 				ctx.ui.notify("No assistant messages since your last reply", "info");
+
 				return;
 			}
 
@@ -581,9 +608,11 @@ export default function (pi: ExtensionAPI) {
 
 				const doExtract = async (): Promise<ExtractionOutcome> => {
 					const auth = await ctx.modelRegistry.getApiKeyAndHeaders(extractionModel);
+
 					if (auth.ok === false) {
 						return { status: "error", message: auth.error };
 					}
+
 					const userMessage: UserMessage = {
 						role: "user",
 						content: [{ type: "text", text: assistantTexts.join("\n\n--- Next assistant message ---\n\n") }],
@@ -599,6 +628,7 @@ export default function (pi: ExtensionAPI) {
 					if (response.stopReason === "aborted") {
 						return { status: "cancelled" };
 					}
+
 					if (response.stopReason === "error") {
 						return { status: "error", message: response.errorMessage ?? "question extraction failed" };
 					}
@@ -607,7 +637,9 @@ export default function (pi: ExtensionAPI) {
 						.filter((c): c is { type: "text"; text: string } => c.type === "text")
 						.map((c) => c.text)
 						.join("\n");
+
 					const result = parseExtractionResult(responseText);
+
 					if (!result) {
 						return { status: "error", message: "question extraction returned invalid JSON" };
 					}
@@ -626,8 +658,8 @@ export default function (pi: ExtensionAPI) {
 
 				doExtract()
 					.then(done)
-					.catch((error: unknown) => {
-						const message = error instanceof Error ? error.message : String(error);
+					.catch((cause: unknown) => {
+						const message = cause instanceof Error ? cause.message : String(cause);
 						done({ status: "error", message });
 					});
 
@@ -636,16 +668,21 @@ export default function (pi: ExtensionAPI) {
 
 			if (extractionOutcome.status === "cancelled") {
 				ctx.ui.notify("Cancelled", "info");
+
 				return;
 			}
+
 			if (extractionOutcome.status === "error") {
 				ctx.ui.notify(`Question extraction failed: ${extractionOutcome.message}`, "error");
+
 				return;
 			}
 
 			const extractionResult = extractionOutcome.result;
+
 			if (extractionResult.questions.length === 0) {
 				ctx.ui.notify("No unanswered questions found since your last reply", "info");
+
 				return;
 			}
 
@@ -656,6 +693,7 @@ export default function (pi: ExtensionAPI) {
 
 			if (answersResult === null) {
 				ctx.ui.notify("Cancelled", "info");
+
 				return;
 			}
 

@@ -10,7 +10,7 @@ Upstream-derived material in:
   extensions/notify.ts
   extensions/btw/index.ts
   extensions/btw/overlay.ts
-License: extensions/NOTIFY-LICENSE.txt and extensions/btw/LICENSE
+License: extensions/MITSUHIKO-AGENT-STUFF-LICENSE.txt
 
 Anthropic skills — Apache-2.0
   skills/frontend-design/ — skills/frontend-design/LICENSE.txt

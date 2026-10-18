@@ -1,6 +1,6 @@
 // Adapted from Armin Ronacher's agent-stuff/extensions/btw.ts at 0865c849befd2021490679f96a8dee58c84ac857.
 // Modified: configurable title, narrow sizing, native cursor handling, close without a dialog.
-// Apache-2.0; see LICENSE in this directory.
+// Apache-2.0; see ../MITSUHIKO-AGENT-STUFF-LICENSE.txt.
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Input, Markdown, truncateToWidth, visibleWidth, type Focusable } from "@earendil-works/pi-tui";
 import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";

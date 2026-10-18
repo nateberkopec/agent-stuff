@@ -38,8 +38,7 @@ test("the packed package installs and discovers every exported resource in an is
 		assert.ok(readFileSync(path.join(installed, "THIRD_PARTY_LICENSES.txt"), "utf8").includes("Apache-2.0"));
 
 		for (const license of [
-			"extensions/NOTIFY-LICENSE.txt",
-			"extensions/btw/LICENSE",
+			"extensions/MITSUHIKO-AGENT-STUFF-LICENSE.txt",
 			"extensions/fast-mode/LICENSE",
 			"extensions/CAFFEINATE-LICENSE.txt",
 			"skills/frontend-design/LICENSE.txt",

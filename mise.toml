@@ -20,6 +20,11 @@ description = "Check JavaScript and TypeScript with anti-slop rules"
 sources = ["extensions/**", "test/**", ".oxlintrc.json", "tools/oxlint/**", "package.json", "development/package.json", "development/aube-lock.yaml"]
 run = "node_modules/.bin/oxlint --config .oxlintrc.json --deny-warnings ."
 
+[tasks."lint:format"]
+description = "Check JavaScript and TypeScript formatting"
+sources = ["**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}", ".oxfmtrc.json", "mise.toml", "development/package.json", "development/aube-lock.yaml"]
+run = "node_modules/.bin/oxfmt --check '**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}'"
+
 [tasks."lint:skills"]
 description = "Validate bundled skills"
 sources = ["skills/**", "tools/lint_agent_skills.rb"]
@@ -31,7 +36,7 @@ run = "gitleaks dir --redact=75 --no-banner --no-color --max-target-megabytes 5 
 
 [tasks.lint]
 description = "Run all lint checks"
-depends = ["lint:javascript", "lint:skills", "lint:secrets"]
+depends = ["lint:javascript", "lint:format", "lint:skills", "lint:secrets"]
 
 [tasks."test:javascript"]
 description = "Run JavaScript extension tests"

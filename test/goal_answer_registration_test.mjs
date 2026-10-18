@@ -13,13 +13,24 @@ function harness() {
 	const entries = [];
 
 	return {
-		commands, tools, shortcuts, entries,
+		commands,
+		tools,
+		shortcuts,
+		entries,
 		pi: {
 			on() {},
-			registerCommand(name, command) { commands.set(name, command); },
-			registerTool(tool) { tools.set(tool.name, tool); },
-			registerShortcut(key, shortcut) { shortcuts.set(key, shortcut); },
-			appendEntry(type, data) { entries.push({ type, data }); },
+			registerCommand(name, command) {
+				commands.set(name, command);
+			},
+			registerTool(tool) {
+				tools.set(tool.name, tool);
+			},
+			registerShortcut(key, shortcut) {
+				shortcuts.set(key, shortcut);
+			},
+			appendEntry(type, data) {
+				entries.push({ type, data });
+			},
 		},
 	};
 }
@@ -36,7 +47,10 @@ test("goal registers locally and retains tool-backed state transitions", async (
 	assert.equal((await execute("get_goal", {})).details.remainingTokens, 100);
 	await execute("update_goal", { status: "complete" });
 	assert.equal((await execute("get_goal", {})).details.goal.status, "complete");
-	assert.deepEqual(h.entries.map((entry) => entry.data.action), ["set", "status"]);
+	assert.deepEqual(
+		h.entries.map((entry) => entry.data.action),
+		["set", "status"],
+	);
 });
 
 test("answer registers its command and shortcut without making model calls", async () => {

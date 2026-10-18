@@ -3,7 +3,12 @@
  * models, with session state, configurable model overrides, and rate-card pricing.
  */
 
-import { getAgentDir, type ExtensionAPI, type SessionEntry, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+	getAgentDir,
+	type ExtensionAPI,
+	type SessionEntry,
+	type ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { calculateCost, clampThinkingLevel, createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { openAICodexResponsesApi, openAIResponsesApi } from "@earendil-works/pi-ai/compat";
 import type {
@@ -214,11 +219,19 @@ function readConfig(path: string): ConfigFile | undefined {
 function writeConfig(path: string, config: ConfigFile): void {
 	try {
 		mkdirSync(dirname(path), { recursive: true });
-		writeFileSync(path, `${JSON.stringify({
-			...config,
-			allowlist: config.allowlist?.map((model) => `${model.provider}/${model.id}`),
-			blocklist: config.blocklist?.map((model) => `${model.provider}/${model.id}`),
-		}, null, 2)}\n`, "utf8");
+		writeFileSync(
+			path,
+			`${JSON.stringify(
+				{
+					...config,
+					allowlist: config.allowlist?.map((model) => `${model.provider}/${model.id}`),
+					blocklist: config.blocklist?.map((model) => `${model.provider}/${model.id}`),
+				},
+				null,
+				2,
+			)}\n`,
+			"utf8",
+		);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.warn(`[${STATUS_KEY}] Failed to write ${path}: ${message}`);
@@ -248,10 +261,13 @@ function isFastModeActive(
 	state: RuntimeState,
 	config: ResolvedConfig,
 ): boolean {
-	return state.active && model !== undefined &&
+	return (
+		state.active &&
+		model !== undefined &&
 		PROVIDER_OVERLAYS.some((overlay) => overlay.api === model.api) &&
 		(contains(DEFAULT_MODELS, model) || contains(config.allowlist, model)) &&
-		!contains(config.blocklist, model);
+		!contains(config.blocklist, model)
+	);
 }
 
 /**
@@ -320,7 +336,11 @@ function withFastModePricing(
 					provider: model.provider,
 					model: model.id,
 					usage: {
-						input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
+						input: 0,
+						output: 0,
+						cacheRead: 0,
+						cacheWrite: 0,
+						totalTokens: 0,
 						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 					},
 					timestamp: Date.now(),
@@ -383,10 +403,10 @@ export default function piFastMode(pi: ExtensionAPI): void {
 
 		const hasConversation = contextEntries.some(
 			(entry) =>
-				(entry.type === "message" ||
-					entry.type === "custom_message" ||
-					entry.type === "compaction" ||
-					entry.type === "branch_summary"),
+				entry.type === "message" ||
+				entry.type === "custom_message" ||
+				entry.type === "compaction" ||
+				entry.type === "branch_summary",
 		);
 
 		if (saved) {
@@ -405,9 +425,10 @@ export default function piFastMode(pi: ExtensionAPI): void {
 	}
 
 	function updateStatus(ctx: ExtensionContext): void {
-		const text = ctx.model && isFastModeActive(ctx.model, state, config)
-			? `⚡ FAST · $ ${fastModeMultiplier(ctx.model.id)}×`
-			: undefined;
+		const text =
+			ctx.model && isFastModeActive(ctx.model, state, config)
+				? `⚡ FAST · $ ${fastModeMultiplier(ctx.model.id)}×`
+				: undefined;
 
 		ctx.ui.setStatus(STATUS_KEY, text);
 	}
@@ -424,7 +445,10 @@ export default function piFastMode(pi: ExtensionAPI): void {
 		const modelKey = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "none";
 
 		if (active) {
-			ctx.ui.notify(`Fast mode: priority service tier for ${modelKey}. Cost accounting includes the priority multiplier.`, "info");
+			ctx.ui.notify(
+				`Fast mode: priority service tier for ${modelKey}. Cost accounting includes the priority multiplier.`,
+				"info",
+			);
 
 			return;
 		}
@@ -490,13 +514,13 @@ export default function piFastMode(pi: ExtensionAPI): void {
 			if (normalized.startsWith("default ")) {
 				const subprefix = normalized.slice("default ".length).trim();
 				const values = ["on", "off", "status"];
-				const items = values.flatMap((value) => value.startsWith(subprefix) ? [{ value, label: value }] : []);
+				const items = values.flatMap((value) => (value.startsWith(subprefix) ? [{ value, label: value }] : []));
 
 				return items.length ? items : null;
 			}
 
 			const values = ["on", "off", "status", "default"];
-			const items = values.flatMap((value) => value.startsWith(normalized.trim()) ? [{ value, label: value }] : []);
+			const items = values.flatMap((value) => (value.startsWith(normalized.trim()) ? [{ value, label: value }] : []));
 
 			return items.length ? items : null;
 		},

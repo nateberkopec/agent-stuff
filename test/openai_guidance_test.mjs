@@ -5,7 +5,13 @@ import { join } from "node:path";
 import test from "node:test";
 import openaiGuidance from "../extensions/openai-guidance/index.ts";
 import { rules } from "../extensions/openai-guidance/catalog.ts";
-import { guidanceBlock, loadTexts, modelFamily, parseConfig, selectRules } from "../extensions/openai-guidance/guidance.ts";
+import {
+	guidanceBlock,
+	loadTexts,
+	modelFamily,
+	parseConfig,
+	selectRules,
+} from "../extensions/openai-guidance/guidance.ts";
 
 const models = [
 	["gpt-5", "gpt-5"],
@@ -51,7 +57,14 @@ test("shares authorization, evidence, and artifact policy with every supported m
 	for (const [id] of models) {
 		const ids = selectedIds(id);
 
-		for (const suffix of ["scope", "preserve-artifact", "citations", "prerequisites", "frontend", "visual-validation"]) {
+		for (const suffix of [
+			"scope",
+			"preserve-artifact",
+			"citations",
+			"prerequisites",
+			"frontend",
+			"visual-validation",
+		]) {
 			assert.ok(ids.includes(`gpt-5.6.${suffix}`), `${id}: ${suffix}`);
 		}
 	}
@@ -84,7 +97,13 @@ test("preserves every existing opt-out ID across generation selection", () => {
 		}
 	}
 
-	assert.deepEqual(selectedIds("gpt-6.1-sol", rules.map((rule) => rule.id)), []);
+	assert.deepEqual(
+		selectedIds(
+			"gpt-6.1-sol",
+			rules.map((rule) => rule.id),
+		),
+		[],
+	);
 });
 
 test("does not restore disabled update or validation instructions through a different rule ID", () => {
@@ -168,7 +187,10 @@ test("rereads historical opt-outs on each GPT-6.1 Sol turn", (t) => {
 	assert.match(initial, /### astra\.updates/);
 	const directory = h.agentDir;
 	mkdirSync(directory, { recursive: true });
-	writeFileSync(join(directory, "openai-guidance.json"), JSON.stringify({ disabled: ["astra.initiative", "gpt-5.6.updates"] }));
+	writeFileSync(
+		join(directory, "openai-guidance.json"),
+		JSON.stringify({ disabled: ["astra.initiative", "gpt-5.6.updates"] }),
+	);
 	const next = h.start("gpt-6.1-sol", initial).systemPrompt;
 	assert.match(next, /<pi-openai-guidance>/);
 	assert.doesNotMatch(next, /### astra\.initiative|### astra\.updates/);
@@ -190,7 +212,12 @@ test("reads global opt-outs from PI_CODING_AGENT_DIR instead of the home agent d
 
 test("GPT-6 injected policy preserves task, permission, format, and required-check boundaries", () => {
 	const texts = loadTexts();
-	const prompt = guidanceBlock(selectRules({ id: "gpt-6.1-sol", provider: "openai" }, ["subagent"], { disabled: [] }), texts).replace(/\s+/g, " ");
+
+	const prompt = guidanceBlock(
+		selectRules({ id: "gpt-6.1-sol", provider: "openai" }, ["subagent"], { disabled: [] }),
+		texts,
+	).replace(/\s+/g, " ");
+
 	assert.match(prompt, /Do not implement changes unless the request also asks for them/);
 	assert.match(prompt, /Require confirmation for external writes/);
 	assert.match(prompt, /Reversibility alone does not authorize/);

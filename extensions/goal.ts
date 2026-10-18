@@ -51,7 +51,9 @@ const CreateGoalParams = Type.Object({
 			"Required. The concrete objective to start pursuing. This starts a new active goal when no unfinished goal exists. If the previous goal is complete, it is replaced.",
 	}),
 	token_budget: Type.Optional(
-		Type.Number({ description: "Optional positive integer token budget for the new goal. Omit unless explicitly requested." }),
+		Type.Number({
+			description: "Optional positive integer token budget for the new goal. Omit unless explicitly requested.",
+		}),
 	),
 });
 
@@ -282,7 +284,10 @@ function goalSummary(goal: Goal): string {
 
 function continuationPrompt(goal: Goal): string {
 	const tokenBudget = goal.tokenBudget === undefined ? "none" : String(goal.tokenBudget);
-	const remainingTokens = goal.tokenBudget === undefined ? "unbounded" : String(Math.max(0, goal.tokenBudget - goal.tokensUsed));
+
+	const remainingTokens =
+		goal.tokenBudget === undefined ? "unbounded" : String(Math.max(0, goal.tokenBudget - goal.tokensUsed));
+
 	const objective = escapeXmlText(goal.objective);
 
 	return `Continue working toward the active thread goal.
@@ -450,9 +455,10 @@ export default function goalExtension(pi: ExtensionAPI) {
 			case "active": {
 				const snapshot = currentGoalSnapshot() ?? goal;
 
-				const usage = snapshot.tokenBudget === undefined
-					? ` (${formatElapsedSeconds(snapshot.timeUsedSeconds)})`
-					: ` (${formatTokensCompact(snapshot.tokensUsed)} / ${formatTokensCompact(snapshot.tokenBudget)})`;
+				const usage =
+					snapshot.tokenBudget === undefined
+						? ` (${formatElapsedSeconds(snapshot.timeUsedSeconds)})`
+						: ` (${formatTokensCompact(snapshot.tokensUsed)} / ${formatTokensCompact(snapshot.tokenBudget)})`;
 
 				ctx.ui.setStatus("goal", theme.fg("accent", `Pursuing goal${usage}`));
 				break;
@@ -622,9 +628,8 @@ export default function goalExtension(pi: ExtensionAPI) {
 
 			if (!raw.objective.trim()) continue;
 
-			const tokenBudget = Value.Check(Type.Number(), raw.tokenBudget) && raw.tokenBudget > 0
-				? Math.floor(raw.tokenBudget)
-				: undefined;
+			const tokenBudget =
+				Value.Check(Type.Number(), raw.tokenBudget) && raw.tokenBudget > 0 ? Math.floor(raw.tokenBudget) : undefined;
 
 			const ts = nowSeconds();
 			goal = {
@@ -632,10 +637,20 @@ export default function goalExtension(pi: ExtensionAPI) {
 				objective: raw.objective,
 				status: normalizeStatus(Value.Check(Type.String(), raw.status) ? raw.status : undefined),
 				tokenBudget,
-				tokensUsed: normalizeNonNegativeInteger(Value.Check(Type.Number(), raw.tokensUsed) ? raw.tokensUsed : undefined),
-				timeUsedSeconds: normalizeNonNegativeInteger(Value.Check(Type.Number(), raw.timeUsedSeconds) ? raw.timeUsedSeconds : undefined),
-				createdAt: normalizeNonNegativeInteger(Value.Check(Type.Number(), raw.createdAt) ? raw.createdAt : undefined, ts),
-				updatedAt: normalizeNonNegativeInteger(Value.Check(Type.Number(), raw.updatedAt) ? raw.updatedAt : undefined, ts),
+				tokensUsed: normalizeNonNegativeInteger(
+					Value.Check(Type.Number(), raw.tokensUsed) ? raw.tokensUsed : undefined,
+				),
+				timeUsedSeconds: normalizeNonNegativeInteger(
+					Value.Check(Type.Number(), raw.timeUsedSeconds) ? raw.timeUsedSeconds : undefined,
+				),
+				createdAt: normalizeNonNegativeInteger(
+					Value.Check(Type.Number(), raw.createdAt) ? raw.createdAt : undefined,
+					ts,
+				),
+				updatedAt: normalizeNonNegativeInteger(
+					Value.Check(Type.Number(), raw.updatedAt) ? raw.updatedAt : undefined,
+					ts,
+				),
 			};
 		}
 
@@ -699,7 +714,9 @@ export default function goalExtension(pi: ExtensionAPI) {
 			const status = goalStopStatusForAssistantError(lastAssistant);
 			setGoalStatus(status);
 			persist("status");
-			showGoalMessage(`Goal ${statusLabel(status)}\n\nThe last goal turn ended with an error, so automatic continuation was stopped.\n\n${goalSummary(goal)}`);
+			showGoalMessage(
+				`Goal ${statusLabel(status)}\n\nThe last goal turn ended with an error, so automatic continuation was stopped.\n\n${goalSummary(goal)}`,
+			);
 			updateStatus(ctx);
 
 			return;
@@ -734,7 +751,9 @@ export default function goalExtension(pi: ExtensionAPI) {
 
 	pi.on("context", async (event) => {
 		return {
-			messages: event.messages.filter((message) => !("customType" in message) || message.customType !== UI_MESSAGE_TYPE),
+			messages: event.messages.filter(
+				(message) => !("customType" in message) || message.customType !== UI_MESSAGE_TYPE,
+			),
 		};
 	});
 
@@ -848,7 +867,9 @@ export default function goalExtension(pi: ExtensionAPI) {
 
 			if (goal && isUnfinishedGoal(goal)) {
 				if (!ctx.hasUI) {
-					showGoalMessage("An unfinished goal already exists. Run /goal clear first, or use interactive mode to confirm replacement.");
+					showGoalMessage(
+						"An unfinished goal already exists. Run /goal clear first, or use interactive mode to confirm replacement.",
+					);
 
 					return;
 				}
@@ -935,7 +956,12 @@ export default function goalExtension(pi: ExtensionAPI) {
 			setGoalStatus(params.status);
 			persist("status");
 			updateStatus(ctx);
-			const response = goalResponse(currentGoalSnapshot(), ctx.sessionManager.getSessionId(), params.status === "complete");
+
+			const response = goalResponse(
+				currentGoalSnapshot(),
+				ctx.sessionManager.getSessionId(),
+				params.status === "complete",
+			);
 
 			return {
 				content: [{ type: "text", text: JSON.stringify(response, null, 2) }],

@@ -91,10 +91,7 @@ const HAIKU_MODEL_ID = "claude-haiku-4-5";
  * Prefer a fast configured Codex model for extraction, then haiku, then the
  * current model.
  */
-async function selectExtractionModel(
-	currentModel: Model<Api>,
-	modelRegistry: ModelRegistry,
-): Promise<Model<Api>> {
+async function selectExtractionModel(currentModel: Model<Api>, modelRegistry: ModelRegistry): Promise<Model<Api>> {
 	for (const modelId of CODEX_MODEL_IDS) {
 		const codexModel = modelRegistry.find("openai-codex", modelId);
 
@@ -123,10 +120,12 @@ async function selectExtractionModel(
 }
 
 const ExtractedQuestions = Type.Object({
-	questions: Type.Array(Type.Object({
-		question: Type.String(),
-		context: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-	})),
+	questions: Type.Array(
+		Type.Object({
+			question: Type.String(),
+			context: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+		}),
+	),
 });
 
 /**
@@ -156,8 +155,7 @@ function parseExtractionResult(text: string): ExtractionResult | null {
 
 			if (Value.Check(ExtractedQuestions, result)) {
 				return {
-					questions: result.questions.map(({ question, context }) =>
-						context ? { question, context } : { question }),
+					questions: result.questions.map(({ question, context }) => (context ? { question, context } : { question })),
 				};
 			}
 		} catch {
@@ -212,11 +210,7 @@ class QnAComponent implements Component {
 	private yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
 	private gray = (s: string) => `\x1b[90m${s}\x1b[0m`;
 
-	constructor(
-		questions: ExtractedQuestion[],
-		tui: TUI,
-		onDone: (result: string | null) => void,
-	) {
+	constructor(questions: ExtractedQuestion[], tui: TUI, onDone: (result: string | null) => void) {
 		this.questions = questions;
 		this.answers = questions.map(() => "");
 		this.tui = tui;
@@ -501,211 +495,237 @@ class QnAComponent implements Component {
 }
 
 export default function (pi: ExtensionAPI) {
-	pi.registerTool(defineTool({
-		name: "answer",
-		label: "Answer questions",
-		description: "Collect the user's answers in an interactive Q&A screen. Use for each grilling question round. Supply complete question text, choices, and recommendations; the user's answers are returned directly. If cancelled, stop the interview until the user asks to resume.",
-		exposure: "model-only",
-		parameters: Type.Object({
-			questions: Type.Array(Type.Object({
-				question: Type.String({ minLength: 1, description: "Complete question, including title, explanation, and choices." }),
-				context: Type.Optional(Type.String({ description: "Supporting context or your recommended answer." })),
-			}), { minItems: 1 }),
+	pi.registerTool(
+		defineTool({
+			name: "answer",
+			label: "Answer questions",
+			description:
+				"Collect the user's answers in an interactive Q&A screen. Use for each grilling question round. Supply complete question text, choices, and recommendations; the user's answers are returned directly. If cancelled, stop the interview until the user asks to resume.",
+			exposure: "model-only",
+			parameters: Type.Object({
+				questions: Type.Array(
+					Type.Object({
+						question: Type.String({
+							minLength: 1,
+							description: "Complete question, including title, explanation, and choices.",
+						}),
+						context: Type.Optional(Type.String({ description: "Supporting context or your recommended answer." })),
+					}),
+					{ minItems: 1 },
+				),
+			}),
+			async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+				if (ctx.mode !== "tui") {
+					throw new Error("answer requires interactive terminal mode; ask the questions in chat instead.");
+				}
+
+				if (signal?.aborted) {
+					return {
+						content: [{ type: "text", text: "Cancelled. Wait for the user to resume." }],
+						details: { cancelled: true },
+						terminate: true,
+					};
+				}
+
+				let abortHandler: (() => void) | undefined;
+				let answers: string | null;
+
+				try {
+					answers = await ctx.ui.custom<string | null>((tui, _theme, _kb, done) => {
+						abortHandler = () => done(null);
+						signal?.addEventListener("abort", abortHandler, { once: true });
+
+						if (signal?.aborted) done(null);
+
+						return new QnAComponent(params.questions, tui, done);
+					});
+				} finally {
+					if (abortHandler) signal?.removeEventListener("abort", abortHandler);
+				}
+
+				if (answers === null) {
+					return {
+						content: [{ type: "text", text: "Cancelled. Wait for the user to resume." }],
+						details: { cancelled: true },
+						terminate: true,
+					};
+				}
+
+				return {
+					content: [{ type: "text", text: "The user answered your questions:\n\n" + answers }],
+					details: { cancelled: false, answers },
+				};
+			},
 		}),
-		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-			if (ctx.mode !== "tui") {
-				throw new Error("answer requires interactive terminal mode; ask the questions in chat instead.");
-			}
-
-			if (signal?.aborted) {
-				return { content: [{ type: "text", text: "Cancelled. Wait for the user to resume." }], details: { cancelled: true }, terminate: true };
-			}
-
-			let abortHandler: (() => void) | undefined;
-			let answers: string | null;
-
-			try {
-				answers = await ctx.ui.custom<string | null>((tui, _theme, _kb, done) => {
-					abortHandler = () => done(null);
-					signal?.addEventListener("abort", abortHandler, { once: true });
-
-					if (signal?.aborted) done(null);
-
-					return new QnAComponent(params.questions, tui, done);
-				});
-			} finally {
-				if (abortHandler) signal?.removeEventListener("abort", abortHandler);
-			}
-
-			if (answers === null) {
-				return { content: [{ type: "text", text: "Cancelled. Wait for the user to resume." }], details: { cancelled: true }, terminate: true };
-			}
-
-			return {
-				content: [{ type: "text", text: "The user answered your questions:\n\n" + answers }],
-				details: { cancelled: false, answers },
-			};
-		},
-	}));
+	);
 
 	const answerHandler = async (ctx: ExtensionContext) => {
-			if (!ctx.hasUI) {
-				ctx.ui.notify("answer requires interactive mode", "error");
+		if (!ctx.hasUI) {
+			ctx.ui.notify("answer requires interactive mode", "error");
 
-				return;
-			}
+			return;
+		}
 
-			if (!ctx.model) {
-				ctx.ui.notify("No model selected", "error");
+		if (!ctx.model) {
+			ctx.ui.notify("No model selected", "error");
 
-				return;
-			}
+			return;
+		}
 
-			const branch = ctx.sessionManager.getBranch();
-			const assistantTexts: string[] = [];
+		const branch = ctx.sessionManager.getBranch();
+		const assistantTexts: string[] = [];
 
-			for (let i = branch.length - 1; i >= 0; i--) {
-				const entry = branch[i];
+		for (let i = branch.length - 1; i >= 0; i--) {
+			const entry = branch[i];
 
-				if (entry.type === "message") {
-					const msg = entry.message;
+			if (entry.type === "message") {
+				const msg = entry.message;
 
-					if (msg.role === "user" || (msg.role === "custom" && msg.customType === "answers")) {
-						break;
+				if (msg.role === "user" || (msg.role === "custom" && msg.customType === "answers")) {
+					break;
+				}
+
+				if (msg.role === "assistant") {
+					if (assistantTexts.length === 0 && msg.stopReason !== "stop") {
+						ctx.ui.notify(`Last assistant message incomplete (${msg.stopReason})`, "error");
+
+						return;
 					}
 
-					if (msg.role === "assistant") {
-						if (assistantTexts.length === 0 && msg.stopReason !== "stop") {
-							ctx.ui.notify(`Last assistant message incomplete (${msg.stopReason})`, "error");
+					const textParts = msg.content
+						.filter((c): c is { type: "text"; text: string } => c.type === "text")
+						.map((c) => c.text);
 
-							return;
-						}
-
-						const textParts = msg.content
-							.filter((c): c is { type: "text"; text: string } => c.type === "text")
-							.map((c) => c.text);
-
-						if (textParts.length > 0 && msg.stopReason === "stop") {
-							assistantTexts.unshift(textParts.join("\n"));
-						}
+					if (textParts.length > 0 && msg.stopReason === "stop") {
+						assistantTexts.unshift(textParts.join("\n"));
 					}
 				}
 			}
+		}
 
-			if (assistantTexts.length === 0) {
-				ctx.ui.notify("No assistant messages since your last reply", "info");
+		if (assistantTexts.length === 0) {
+			ctx.ui.notify("No assistant messages since your last reply", "info");
 
-				return;
-			}
+			return;
+		}
 
-			// Select the best model for extraction.
-			const extractionModel = await selectExtractionModel(ctx.model, ctx.modelRegistry);
+		// Select the best model for extraction.
+		const extractionModel = await selectExtractionModel(ctx.model, ctx.modelRegistry);
 
-			// Run extraction with loader UI
-			const extractionOutcome = await ctx.ui.custom<ExtractionOutcome>((tui, theme, _kb, done) => {
-				const loader = new BorderedLoader(tui, theme, `Extracting questions using ${extractionModel.id}...`);
-				loader.onAbort = () => done({ status: "cancelled" });
+		// Run extraction with loader UI
+		const extractionOutcome = await ctx.ui.custom<ExtractionOutcome>((tui, theme, _kb, done) => {
+			const loader = new BorderedLoader(tui, theme, `Extracting questions using ${extractionModel.id}...`);
+			loader.onAbort = () => done({ status: "cancelled" });
 
-				const doExtract = async (): Promise<ExtractionOutcome> => {
-					const auth = await ctx.modelRegistry.getApiKeyAndHeaders(extractionModel);
+			const doExtract = async (): Promise<ExtractionOutcome> => {
+				const auth = await ctx.modelRegistry.getApiKeyAndHeaders(extractionModel);
 
-					if (auth.ok === false) {
-						return { status: "error", message: auth.error };
-					}
+				if (auth.ok === false) {
+					return { status: "error", message: auth.error };
+				}
 
-					const userMessage: UserMessage = {
-						role: "user",
-						content: [{ type: "text", text: assistantTexts.join("\n\n--- Next assistant message ---\n\n") }],
-						timestamp: Date.now(),
-					};
+				const userMessage: UserMessage = {
+					role: "user",
+					content: [{ type: "text", text: assistantTexts.join("\n\n--- Next assistant message ---\n\n") }],
+					timestamp: Date.now(),
+				};
 
-					const response = await ctx.modelRegistry.streamSimple(
+				const response = await ctx.modelRegistry
+					.streamSimple(
 						extractionModel,
 						{ systemPrompt: SYSTEM_PROMPT, messages: [userMessage] },
 						{ apiKey: auth.apiKey, headers: auth.headers, signal: loader.signal },
-					).result();
+					)
+					.result();
 
-					if (response.stopReason === "aborted") {
-						return { status: "cancelled" };
-					}
+				if (response.stopReason === "aborted") {
+					return { status: "cancelled" };
+				}
 
-					if (response.stopReason === "error") {
-						return { status: "error", message: response.errorMessage ?? "question extraction failed" };
-					}
+				if (response.stopReason === "error") {
+					return { status: "error", message: response.errorMessage ?? "question extraction failed" };
+				}
 
-					const responseText = response.content
-						.filter((c): c is { type: "text"; text: string } => c.type === "text")
-						.map((c) => c.text)
-						.join("\n");
+				const responseText = response.content
+					.filter((c): c is { type: "text"; text: string } => c.type === "text")
+					.map((c) => c.text)
+					.join("\n");
 
-					const result = parseExtractionResult(responseText);
+				const result = parseExtractionResult(responseText);
 
-					if (!result) {
-						return { status: "error", message: "question extraction returned invalid JSON" };
-					}
+				if (!result) {
+					return { status: "error", message: "question extraction returned invalid JSON" };
+				}
 
-					if (result.questions.some((q) =>
-						!q.question.trim() || !assistantTexts.some((text) => text.includes(q.question)) ||
-						(q.context && !assistantTexts.some((text) => text.includes(q.context!)))
-					)) {
-						return { status: "error", message: "question extraction did not preserve the original text" };
-					}
+				if (
+					result.questions.some(
+						(q) =>
+							!q.question.trim() ||
+							!assistantTexts.some((text) => text.includes(q.question)) ||
+							(q.context && !assistantTexts.some((text) => text.includes(q.context!))),
+					)
+				) {
+					return { status: "error", message: "question extraction did not preserve the original text" };
+				}
 
-					return { status: "ok", result: {
+				return {
+					status: "ok",
+					result: {
 						questions: result.questions.map((question) => restoreQuestionBlock(question, assistantTexts)),
-					} };
+					},
 				};
+			};
 
-				doExtract()
-					.then(done)
-					.catch((cause: unknown) => {
-						const message = cause instanceof Error ? cause.message : String(cause);
-						done({ status: "error", message });
-					});
+			doExtract()
+				.then(done)
+				.catch((cause: unknown) => {
+					const message = cause instanceof Error ? cause.message : String(cause);
+					done({ status: "error", message });
+				});
 
-				return loader;
-			});
+			return loader;
+		});
 
-			if (extractionOutcome.status === "cancelled") {
-				ctx.ui.notify("Cancelled", "info");
+		if (extractionOutcome.status === "cancelled") {
+			ctx.ui.notify("Cancelled", "info");
 
-				return;
-			}
+			return;
+		}
 
-			if (extractionOutcome.status === "error") {
-				ctx.ui.notify(`Question extraction failed: ${extractionOutcome.message}`, "error");
+		if (extractionOutcome.status === "error") {
+			ctx.ui.notify(`Question extraction failed: ${extractionOutcome.message}`, "error");
 
-				return;
-			}
+			return;
+		}
 
-			const extractionResult = extractionOutcome.result;
+		const extractionResult = extractionOutcome.result;
 
-			if (extractionResult.questions.length === 0) {
-				ctx.ui.notify("No unanswered questions found since your last reply", "info");
+		if (extractionResult.questions.length === 0) {
+			ctx.ui.notify("No unanswered questions found since your last reply", "info");
 
-				return;
-			}
+			return;
+		}
 
-			// Show the Q&A component
-			const answersResult = await ctx.ui.custom<string | null>((tui, _theme, _kb, done) => {
-				return new QnAComponent(extractionResult.questions, tui, done);
-			});
+		// Show the Q&A component
+		const answersResult = await ctx.ui.custom<string | null>((tui, _theme, _kb, done) => {
+			return new QnAComponent(extractionResult.questions, tui, done);
+		});
 
-			if (answersResult === null) {
-				ctx.ui.notify("Cancelled", "info");
+		if (answersResult === null) {
+			ctx.ui.notify("Cancelled", "info");
 
-				return;
-			}
+			return;
+		}
 
-			// Send the answers directly as a message and trigger a turn
-			pi.sendMessage(
-				{
-					customType: "answers",
-					content: "I answered your questions in the following way:\n\n" + answersResult,
-					display: true,
-				},
-				{ triggerTurn: true },
-			);
+		// Send the answers directly as a message and trigger a turn
+		pi.sendMessage(
+			{
+				customType: "answers",
+				content: "I answered your questions in the following way:\n\n" + answersResult,
+				display: true,
+			},
+			{ triggerTurn: true },
+		);
 	};
 
 	pi.registerCommand("answer", {

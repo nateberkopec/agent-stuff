@@ -109,7 +109,9 @@ function harness(t, config = {}) {
 		statuses,
 		globalPath,
 		projectPath,
-		setRawStream(stream) { rawStream = stream; },
+		setRawStream(stream) {
+			rawStream = stream;
+		},
 		emit: (name) => handlers.get(name)({ reason: "new" }, ctx),
 		command: (args) => commands.get("fast").handler(args, ctx),
 		stream: () => providers.get(ctx.model.provider).streamSimple(ctx.model, { messages: [] }, {}),
@@ -206,9 +208,7 @@ test("footer and terminal done/error costs agree for every built-in model and fa
 				final.errorMessage = "Upstream error event";
 			}
 
-			raw.push(type === "done"
-				? { type, reason: "stop", message: final }
-				: { type, reason: "error", error: final });
+			raw.push(type === "done" ? { type, reason: "stop", message: final } : { type, reason: "error", error: final });
 			raw.end();
 			h.setRawStream(raw);
 			const output = h.stream();
@@ -220,41 +220,47 @@ test("footer and terminal done/error costs agree for every built-in model and fa
 	}
 });
 
-test("upstream iterator and result failures become terminal error messages without unhandled rejections", { timeout: 2000 }, async (t) => {
-	const h = harness(t);
-	await h.command("on");
-	const unhandled = [];
-	const onUnhandled = (error) => unhandled.push(error);
-	process.on("unhandledRejection", onUnhandled);
-	t.after(() => process.off("unhandledRejection", onUnhandled));
+test(
+	"upstream iterator and result failures become terminal error messages without unhandled rejections",
+	{ timeout: 2000 },
+	async (t) => {
+		const h = harness(t);
+		await h.command("on");
+		const unhandled = [];
+		const onUnhandled = (error) => unhandled.push(error);
+		process.on("unhandledRejection", onUnhandled);
+		t.after(() => process.off("unhandledRejection", onUnhandled));
 
-	for (const failure of ["iterator", "result", "partial"]) {
-		const partial = message(h.ctx.model);
-		h.setRawStream({
-			async *[Symbol.asyncIterator]() {
-				if (failure === "partial") yield { type: "start", partial };
+		for (const failure of ["iterator", "result", "partial"]) {
+			const partial = message(h.ctx.model);
+			h.setRawStream({
+				async *[Symbol.asyncIterator]() {
+					if (failure === "partial") yield { type: "start", partial };
 
-				if (failure !== "result") throw new Error(`${failure} failed`);
-			},
-			async result() { throw new Error("result failed"); },
-		});
-		const stream = h.stream();
-		const events = await Array.fromAsync(stream);
-		const event = events.at(-1);
-		assert.equal(event?.type, "error");
-		assert.equal(event.reason, "error");
-		const result = await stream.result();
-		assert.equal(result, event.error);
-		assert.equal(result.stopReason, "error");
-		assert.equal(result.errorMessage, `${failure} failed`);
-		assert.equal(result.model, h.ctx.model.id);
-		assert.equal(result.provider, h.ctx.model.provider);
-		assert.equal(result.api, h.ctx.model.api);
+					if (failure !== "result") throw new Error(`${failure} failed`);
+				},
+				async result() {
+					throw new Error("result failed");
+				},
+			});
+			const stream = h.stream();
+			const events = await Array.fromAsync(stream);
+			const event = events.at(-1);
+			assert.equal(event?.type, "error");
+			assert.equal(event.reason, "error");
+			const result = await stream.result();
+			assert.equal(result, event.error);
+			assert.equal(result.stopReason, "error");
+			assert.equal(result.errorMessage, `${failure} failed`);
+			assert.equal(result.model, h.ctx.model.id);
+			assert.equal(result.provider, h.ctx.model.provider);
+			assert.equal(result.api, h.ctx.model.api);
 
-		if (failure === "partial") assertPricing(h, result, 2);
-		else assert.equal(result.usage.cost.total, 0);
-	}
+			if (failure === "partial") assertPricing(h, result, 2);
+			else assert.equal(result.usage.cost.total, 0);
+		}
 
-	await new Promise((resolve) => setImmediate(resolve));
-	assert.deepEqual(unhandled, []);
-});
+		await new Promise((resolve) => setImmediate(resolve));
+		assert.deepEqual(unhandled, []);
+	},
+);

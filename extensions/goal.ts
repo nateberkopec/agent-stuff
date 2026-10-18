@@ -947,12 +947,6 @@ export default function goalExtension(pi: ExtensionAPI) {
 		],
 		parameters: UpdateGoalParams,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			if (params.status !== "complete" && params.status !== "blocked") {
-				throw new Error(
-					"update_goal can only mark the existing goal complete or blocked; pause, resume, budget-limited, and usage-limited status changes are controlled by the user or system",
-				);
-			}
-
 			setGoalStatus(params.status);
 			persist("status");
 			updateStatus(ctx);

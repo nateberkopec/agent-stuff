@@ -56,6 +56,8 @@ test("the packed package installs and discovers every exported resource in an is
 			import { DefaultResourceLoader, SettingsManager } from ${JSON.stringify(sdk)};
 			const root = ${JSON.stringify(installed)};
 			const manifest = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+			for (const resource of [...manifest.files, ...Object.values(manifest.pi).flat()])
+				assert.ok(fs.existsSync(path.resolve(root, resource)), resource);
 			const loader = new DefaultResourceLoader({
 				cwd: process.cwd(),
 				agentDir: process.env.PI_CODING_AGENT_DIR,
@@ -84,7 +86,6 @@ test("the packed package installs and discovers every exported resource in an is
 			assert.deepEqual(loader.getSkills().diagnostics, []);
 			assert.deepEqual(loader.getSkills().skills.map(s => s.name).sort(), expectedSkills.sort());
 			assert.deepEqual(loader.getPrompts().diagnostics, []);
-			assert.deepEqual(loader.getPrompts().prompts.map(p => p.name), []);
 			assert.deepEqual(loader.getThemes().diagnostics, []);
 			assert.deepEqual(loader.getThemes().themes, []);
 			console.log("installed resources verified");

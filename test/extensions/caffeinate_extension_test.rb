@@ -6,7 +6,7 @@ class CaffeinateExtensionTest < Minitest::Test
   UPSTREAM_SHA = "3a7629bd3bb119cea6f428e1fca751c4f7089934"
   UPSTREAM_HEADER = %r{Vendored from https://github\.com/forlorn-echo/pi-caffeinate at\n// #{UPSTREAM_SHA}}
 
-  def test_vendored_source_matches_upstream_behavior
+  def test_bounded_sleep_assertion_lifecycle_is_registered
     vendored = read_extension
     header, body = split_header(vendored)
     assert_match(UPSTREAM_HEADER, header)
@@ -22,7 +22,7 @@ class CaffeinateExtensionTest < Minitest::Test
     skip "caffeinate lifecycle test requires macOS" unless macos?
     skip "caffeinate command is not available" unless command?("caffeinate")
 
-    unrelated_pid = Process.spawn("caffeinate", "-i", "-t", "30", out: File::NULL, err: File::NULL)
+    unrelated_pid = Process.spawn("caffeinate", "-i", "-t", "120", out: File::NULL, err: File::NULL)
     output, status = Open3.capture2e("node", "--input-type=module", "-e", harness)
 
     assert status.success?, output
@@ -67,8 +67,31 @@ class CaffeinateExtensionTest < Minitest::Test
     <<~JS
       import caffeinate from #{EXTENSION.inspect};
 
+      const { EventEmitter } = await import("node:events");
       const handlers = {};
-      const fakePi = { on: (event, handler) => { (handlers[event] ??= []).push(handler); } };
+      const events = new EventEmitter();
+      let totalActive = 0;
+      let deferReplies = false;
+      const pendingReplies = [];
+      events.on("subagents:rpc:v1:request", ({ requestId }) => {
+        const reply = () => events.emit(`subagents:rpc:v1:reply:${requestId}`, {
+          version: 1, requestId, success: true,
+          data: { fleet: { version: 1, totalActive } },
+        });
+        if (deferReplies) pendingReplies.push(reply);
+        else queueMicrotask(reply);
+      });
+      const fakePi = {
+        on: (event, handler) => { (handlers[event] ??= []).push(handler); },
+        getAllTools: () => [{ name: "subagent" }],
+        events: {
+          on(name, handler) {
+            events.on(name, handler);
+            return () => events.off(name, handler);
+          },
+          emit: (name, data) => events.emit(name, data),
+        },
+      };
       const ctx = { hasUI: false, ui: { notify: () => {} } };
 
       caffeinate(fakePi);
@@ -76,7 +99,8 @@ class CaffeinateExtensionTest < Minitest::Test
         if (!handlers[event]?.length) throw new Error(`missing ${event} handler`);
       }
 
-      const { execFileSync, spawnSync } = await import("node:child_process");
+      const { execFileSync } = await import("node:child_process");
+      const { setTimeout: delay } = await import("node:timers/promises");
       // Only this harness's children belong to the extension under test. Other Pi
       // sessions may legitimately hold their own caffeinate assertions.
       const assertions = () => {
@@ -90,29 +114,58 @@ class CaffeinateExtensionTest < Minitest::Test
             return parentPid === String(process.pid) && args.join(" ").startsWith("caffeinate -i");
           });
       };
-      const waitFor = (want, label) => {
-        const deadline = Date.now() + 5000;
+      const waitFor = async (want, label, timeout = 5000) => {
+        const deadline = Date.now() + timeout;
         for (;;) {
           const found = assertions();
           if (want ? found.length : !found.length) return found;
           if (Date.now() > deadline) throw new Error(`${label}: still [${found.join(" | ")}]`);
-          spawnSync("sleep", ["0.2"]);
+          await delay(100);
         }
       };
 
       handlers.agent_start[0]({}, ctx);
-      const spawned = waitFor(true, "caffeinate -i was not spawned on agent_start");
+      const spawned = await waitFor(true, "caffeinate -i was not spawned on agent_start");
       const pid = spawned[0].split(/\\s+/, 1)[0];
       const args = execFileSync("ps", ["-o", "args=", "-p", pid], { encoding: "utf-8" });
       if (!args.includes("-t 300")) throw new Error("spawned assertion missing bounded timeout");
 
-      handlers.agent_settled[0]();
-      waitFor(false, "assertion leaked after agent_settled");
+      handlers.agent_settled[0]({}, ctx);
+      await delay(100);
+      if (!assertions().some((line) => line.split(/\\s+/, 1)[0] === pid))
+        throw new Error("sleep assertion dropped during the agent handoff");
 
       handlers.agent_start[0]({}, ctx);
-      waitFor(true, "caffeinate -i was not re-spawned on second agent_start");
+      await delay(100);
+      if (!assertions().some((line) => line.split(/\\s+/, 1)[0] === pid))
+        throw new Error("handoff did not reuse the existing sleep assertion");
+
+      totalActive = 1;
+      handlers.agent_settled[0]({}, ctx);
+      await delay(32000);
+      if (!assertions().some((line) => line.split(/\\s+/, 1)[0] === pid))
+        throw new Error("parent sleep assertion expired while its async workflow remained active");
+
+      totalActive = 0;
+      events.emit("subagent:async-complete", { id: "workflow" });
+      await delay(100);
+      if (!assertions().some((line) => line.split(/\\s+/, 1)[0] === pid))
+        throw new Error("sleep assertion dropped before the workflow completion wake turn");
+      await waitFor(false, "assertion leaked after the idle grace period", 35000);
+
+      handlers.agent_start[0]({}, ctx);
+      await waitFor(true, "caffeinate -i was not re-spawned after idle release");
+      deferReplies = true;
+      handlers.agent_settled[0]({}, ctx);
       handlers.session_shutdown[0]();
-      waitFor(false, "assertion leaked after session_shutdown");
+      totalActive = 1;
+      for (const reply of pendingReplies) reply();
+      await delay(100);
+      await waitFor(false, "assertion leaked or restarted after session_shutdown");
+      for (const channel of ["subagent:async-started", "subagent:async-complete", "subagent:process-terminal"]) {
+        if (events.listenerCount(channel) !== 0)
+          throw new Error(`listener leaked after session_shutdown: ${channel}`);
+      }
 
       console.log("caffeinate lifecycle ok");
       process.exit(0);

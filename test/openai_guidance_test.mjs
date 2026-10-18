@@ -119,10 +119,16 @@ test("keeps strict configuration validation", () => {
 function harness(t) {
 	const home = mkdtempSync(join(tmpdir(), "openai-guidance-"));
 	const previousHome = process.env.HOME;
+	const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+	const agentDir = join(home, "isolated-agent");
 	process.env.HOME = home;
+	process.env.PI_CODING_AGENT_DIR = agentDir;
 	t.after(() => {
 		if (previousHome === undefined) delete process.env.HOME;
 		else process.env.HOME = previousHome;
+
+		if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+		else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
 		rmSync(home, { recursive: true, force: true });
 	});
 	const handlers = new Map();
@@ -133,6 +139,7 @@ function harness(t) {
 
 	return {
 		home,
+		agentDir,
 		start: (id, systemPrompt = "Base prompt", provider = "openai") =>
 			handlers.get("before_agent_start")({ systemPrompt }, { model: { id, provider } }),
 	};
@@ -159,7 +166,7 @@ test("rereads historical opt-outs on each GPT-6.1 Sol turn", (t) => {
 	const initial = h.start("gpt-6.1-sol").systemPrompt;
 	assert.match(initial, /### astra\.initiative/);
 	assert.match(initial, /### astra\.updates/);
-	const directory = join(h.home, ".pi", "agent");
+	const directory = h.agentDir;
 	mkdirSync(directory, { recursive: true });
 	writeFileSync(join(directory, "openai-guidance.json"), JSON.stringify({ disabled: ["astra.initiative", "gpt-5.6.updates"] }));
 	const next = h.start("gpt-6.1-sol", initial).systemPrompt;
@@ -167,6 +174,18 @@ test("rereads historical opt-outs on each GPT-6.1 Sol turn", (t) => {
 	assert.doesNotMatch(next, /### astra\.initiative|### astra\.updates/);
 	writeFileSync(join(directory, "openai-guidance.json"), "{ invalid");
 	assert.throws(() => h.start("gpt-6.1-sol"), /Invalid OpenAI guidance config/);
+});
+
+test("reads global opt-outs from PI_CODING_AGENT_DIR instead of the home agent directory", (t) => {
+	const h = harness(t);
+	const homeAgentDir = join(h.home, ".pi", "agent");
+	mkdirSync(homeAgentDir, { recursive: true });
+	writeFileSync(join(homeAgentDir, "openai-guidance.json"), JSON.stringify({ disabled: ["astra.updates"] }));
+	mkdirSync(h.agentDir, { recursive: true });
+	writeFileSync(join(h.agentDir, "openai-guidance.json"), JSON.stringify({ disabled: ["astra.initiative"] }));
+	const prompt = h.start("gpt-6.1-sol").systemPrompt;
+	assert.doesNotMatch(prompt, /### astra\.initiative/);
+	assert.match(prompt, /### astra\.updates/);
 });
 
 test("GPT-6 injected policy preserves task, permission, format, and required-check boundaries", () => {

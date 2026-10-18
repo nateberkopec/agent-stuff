@@ -1,11 +1,10 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { homedir } from "node:os";
+import { getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
 import { baseWithoutPrevious, guidanceBlock, loadTexts, modelFamily, readConfig, selectRules } from "./guidance.ts";
 
 export default function openaiGuidance(pi: ExtensionAPI) {
   const texts = loadTexts();
-  const configPath = join(homedir(), ".pi", "agent", "openai-guidance.json");
+  const configPath = join(getAgentDir(), "openai-guidance.json");
   let previous = "";
   pi.on("before_agent_start", (event, ctx) => {
     const base = baseWithoutPrevious(event.systemPrompt, previous);

@@ -28,7 +28,7 @@
  * its internals. Token counts are real and never modified.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { calculateCost, clampThinkingLevel, createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { openAICodexResponsesApi, openAIResponsesApi } from "@earendil-works/pi-ai/compat";
 import type {
@@ -42,7 +42,6 @@ import type {
 } from "@earendil-works/pi-ai";
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 export const SERVICE_TIERS = ["priority", "flex", "default", "auto", "scale"] as const;
@@ -233,10 +232,10 @@ export function parseModels(value: unknown): SupportedModel[] | undefined {
 		.filter((entry): entry is SupportedModel => entry !== undefined);
 }
 
-export function configPaths(cwd: string, home = homedir()): { project: string; global: string } {
+export function configPaths(cwd: string): { project: string; global: string } {
 	return {
 		project: join(cwd, ".pi", "extensions", CONFIG_BASENAME),
-		global: join(home, ".pi", "agent", "extensions", CONFIG_BASENAME),
+		global: join(getAgentDir(), "extensions", CONFIG_BASENAME),
 	};
 }
 
@@ -271,8 +270,8 @@ export function writeConfig(path: string, config: ConfigFile): void {
 	}
 }
 
-export function defaultResolvedConfig(cwd: string, home = homedir()): ResolvedConfig {
-	const paths = configPaths(cwd, home);
+export function defaultResolvedConfig(cwd: string): ResolvedConfig {
+	const paths = configPaths(cwd);
 	return {
 		configPath: paths.global,
 		persistState: DEFAULT_CONFIG.persistState,
@@ -283,8 +282,8 @@ export function defaultResolvedConfig(cwd: string, home = homedir()): ResolvedCo
 	};
 }
 
-export function resolveConfig(cwd: string, home = homedir()): ResolvedConfig {
-	const paths = configPaths(cwd, home);
+export function resolveConfig(cwd: string): ResolvedConfig {
+	const paths = configPaths(cwd);
 	const globalConfig = readConfig(paths.global) ?? {};
 	const projectConfig = readConfig(paths.project) ?? {};
 	const merged: ConfigFile = { ...DEFAULT_CONFIG, ...globalConfig, ...projectConfig };

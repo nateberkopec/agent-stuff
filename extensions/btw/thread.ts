@@ -3,7 +3,7 @@ import type { Message } from "@earendil-works/pi-ai/compat";
 import { createBackend, textOf, type ChatSpec } from "./backend.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { ChatMessage } from "../shared/chat_message.ts";
+import { ChatMessage } from "./chat_message.ts";
 
 const StoredTurn = Type.Object({ id: Type.String(), messages: Type.Array(ChatMessage) });
 

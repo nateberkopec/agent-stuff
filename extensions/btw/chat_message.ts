@@ -1,4 +1,5 @@
-import { Type } from "typebox";
+import type { Message } from "@earendil-works/pi-ai/compat";
+import { Type, type Static } from "typebox";
 
 const Json = Type.Cyclic(
 	{
@@ -7,7 +8,7 @@ const Json = Type.Cyclic(
 			Type.Boolean(),
 			Type.Number(),
 			Type.String(),
-			Type.Array(Type.Ref("Value")),
+			Type.Immutable(Type.Array(Type.Ref("Value"))),
 			Type.Record(Type.String(), Type.Ref("Value")),
 		]),
 	},
@@ -55,7 +56,6 @@ const Usage = Type.Object({
 	}),
 });
 
-// Preserve SDK system/tool declarations as well as conversation content when replaying a side chat.
 export const ChatMessage = Type.Union([
 	Type.Object({
 		role: Type.Literal("system"),
@@ -63,9 +63,7 @@ export const ChatMessage = Type.Union([
 		timestamp: Type.Number(),
 		sections: Type.Optional(Type.Record(Type.String(), Type.Union([Type.String(), Type.Null()]))),
 		toolsAdded: Type.Optional(
-			Type.Array(
-				Type.Object({ name: Type.String(), description: Type.String(), parameters: Type.Record(Type.String(), Json) }),
-			),
+			Type.Array(Type.Object({ name: Type.String(), description: Type.String(), parameters: Type.Object({}) })),
 		),
 		toolsRemoved: Type.Optional(Type.Array(Type.Object({ name: Type.String() }))),
 	}),
@@ -81,11 +79,15 @@ export const ChatMessage = Type.Union([
 		provider: Type.String(),
 		model: Type.String(),
 		usage: Usage,
-		stopReason: Type.Union(
-			(["pending", "stop", "length", "toolUse", "error", "aborted", "deferred"] as const).map((reason) =>
-				Type.Literal(reason),
-			),
-		),
+		stopReason: Type.Union([
+			Type.Literal("pending"),
+			Type.Literal("stop"),
+			Type.Literal("length"),
+			Type.Literal("toolUse"),
+			Type.Literal("error"),
+			Type.Literal("aborted"),
+			Type.Literal("deferred"),
+		]),
 		errorMessage: Type.Optional(Type.String()),
 		timestamp: Type.Number(),
 	}),
@@ -99,3 +101,9 @@ export const ChatMessage = Type.Union([
 		timestamp: Type.Number(),
 	}),
 ]);
+
+type Assert<T extends true> = T;
+
+export type SchemaMatchesMessage = Assert<[Static<typeof ChatMessage>] extends [Message] ? true : false>;
+
+export type MessageMatchesSchema = Assert<[Message] extends [Static<typeof ChatMessage>] ? true : false>;

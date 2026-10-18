@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Value } from "typebox/value";
-import { ChatMessage } from "../extensions/shared/chat_message.ts";
+import { ChatMessage } from "../extensions/btw/chat_message.ts";
 import { FleetStatusReply } from "../extensions/shared/subagent_status.ts";
 
 test("chat replay preserves SDK system sections and tool declarations", () => {

@@ -126,7 +126,7 @@ const DEFAULT_CONFIG: Omit<ResolvedConfig, "configPath"> = {
 	blocklist: [],
 };
 
-const StoredState = Type.Object({ active: Type.Boolean(), serviceTier: Type.Literal("priority") });
+const StoredState = Type.Object({ active: Type.Boolean(), serviceTier: Type.String() });
 
 const ConfigInput = Type.Object({
 	persistState: Type.Optional(WireValue),
@@ -142,7 +142,7 @@ function readSessionState(entries: readonly SessionEntry[]): RuntimeState | unde
 		const entry = entries[index];
 
 		if (entry.type === "custom" && entry.customType === SESSION_STATE_TYPE && Value.Check(StoredState, entry.data)) {
-			return { active: entry.data.active };
+			return { active: entry.data.active && entry.data.serviceTier === "priority" };
 		}
 	}
 

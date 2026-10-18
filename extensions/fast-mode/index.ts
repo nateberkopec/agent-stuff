@@ -1,34 +1,9 @@
 /**
- * pi-fast-mode — OpenAI Codex fast mode for pi.
- *
- * Registers an API-layer stream override for `openai-codex-responses` that
- * injects `service_tier: "priority"` into requests when fast mode is enabled
- * and the active model is on the supported set. pi-ai's built-in
- * `openai-codex-responses` implementation turns `options.serviceTier` into the
- * `service_tier` request body field AND applies its priority cost multiplier,
- * so passing the option keeps both the request and the footer cost accounting
- * consistent.
- *
- * Model selection is a three-part override, evaluated per request:
- *   supported = (built-in defaults ∪ allowlist) − blocklist
- * and the model's API must have an `ApiTierSpec`. Built-in defaults ship for
- * the OpenAI Codex models on the official fast-mode rate card; `allowlist`
- * adds models (e.g. custom models.json entries, or future spec'd providers);
- * `blocklist` excludes models you do not want tiered.
- *
- * service_tier is an OpenAI Responses concept: only APIs with an ApiTierSpec
- * participate. Anthropic Messages, Google, and completions-style APIs have no
- * tier and are never touched, even if they appear in the allowlist.
- *
- * Cost accounting: the displayed cost is recomputed from raw token counts ×
- * model.cost × the official rate-card multiplier (2.5x for GPT-5.6/5.5, 2x for
- * GPT-5.4) on terminal stream events. Codex cache writes are excluded because
- * the Codex rate card does not charge for them. This is independent of pi-ai's
- * internal service-tier multiplier table, so it stays correct if pi-ai changes
- * its internals. Token counts are real and never modified.
+ * OpenAI and OpenAI Codex fast mode: priority requests for supported Responses
+ * models, with session state, configurable model overrides, and rate-card pricing.
  */
 
-import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI, type SessionEntry, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { calculateCost, clampThinkingLevel, createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { openAICodexResponsesApi, openAIResponsesApi } from "@earendil-works/pi-ai/compat";
 import type {
@@ -38,329 +13,255 @@ import type {
 	AssistantMessageEventStream,
 	TranscriptContext,
 	Model,
-	ModelThinkingLevel,
+	Usage,
 	SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
+
+import { Type } from "typebox";
+import { Value } from "typebox/value";
+import { WireValue } from "../shared/wire_value.ts";
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-export const SERVICE_TIERS = ["priority", "flex", "default", "auto", "scale"] as const;
-export type ServiceTier = (typeof SERVICE_TIERS)[number];
-
-/** Options accepted by pi-ai's Codex Responses implementation. */
-export type CodexStreamOptions = SimpleStreamOptions & {
-	serviceTier?: ServiceTier;
-	reasoningEffort?: ModelThinkingLevel | "none";
-	textVerbosity?: "low" | "medium" | "high";
-	reasoningSummary?: "auto" | "concise" | "detailed" | "off" | "on" | null;
-	toolChoice?: "auto" | "none" | "required";
+type PriorityStreamOptions = SimpleStreamOptions & {
+	serviceTier?: "priority";
+	reasoningEffort?: SimpleStreamOptions["reasoning"];
 };
 
-export const CONFIG_BASENAME = "pi-fast-mode.json";
-/** Existing provider whose Codex models should receive the API-layer override. */
-export const CODEX_PROVIDER = "openai-codex";
-/** Existing provider whose Sign in with ChatGPT and API-key models should receive the override. */
-export const OPENAI_PROVIDER = "openai";
+const CONFIG_BASENAME = "pi-fast-mode.json";
+
 // Footer statuses are rendered alphabetically by key; keep fast mode ahead of MCP.
-export const STATUS_KEY = "fast-mode";
-export const COMMAND_FAST = "fast";
-export const SESSION_STATE_TYPE = "fast-mode-state";
+const STATUS_KEY = "fast-mode";
+
+const COMMAND_FAST = "fast";
+
+const SESSION_STATE_TYPE = "fast-mode-state";
 
 /** Official Codex fast-mode credit multipliers per model (OpenAI Codex rate card). */
-export const OFFICIAL_FAST_MULTIPLIER: Record<string, number> = {
-	"gpt-5.6-sol": 2.5,
-	"gpt-5.6-terra": 2.5,
-	"gpt-5.6-luna": 2.5,
-	"gpt-5.5": 2.5,
-	"gpt-5.4": 2,
-};
-
-/** Built-in supported models for the OpenAI Codex provider. */
-export const DEFAULT_FAST_MODE_MODELS = [
-	"openai-codex/gpt-5.6-sol",
-	"openai-codex/gpt-5.6-terra",
-	"openai-codex/gpt-5.6-luna",
-	"openai-codex/gpt-5.5",
-	"openai-codex/gpt-5.4",
-] as const;
-
-/** Built-in supported models for the OpenAI provider. */
-export const DEFAULT_OPENAI_FAST_MODE_MODELS = [
-	"openai/gpt-6.1-sol",
-	"openai/gpt-6-sol",
-	"openai/gpt-6-astra",
-	"openai/gpt-6-luna",
-] as const;
+const OFFICIAL_FAST_MULTIPLIER = new Map([
+	["gpt-5.6-sol", 2.5],
+	["gpt-5.6-terra", 2.5],
+	["gpt-5.6-luna", 2.5],
+	["gpt-5.5", 2.5],
+	["gpt-5.4", 2],
+]);
 
 /**
  * How a fast tier is applied for one API. One spec per API; everything else in
  * the extension is driven off these.
  */
-export interface ApiTierSpec {
+interface ProviderOverlay {
 	/** Provider whose models on `api` should receive the overlay. */
 	provider: string;
 	api: Api;
-	/** Tiers this API accepts. openai-codex-responses accepts only `priority`. */
-	supportedTiers: readonly ServiceTier[];
 	/** Default `provider/model` allowlist entries shipped for this API. */
 	defaultModels: readonly string[];
 	/** Invoke the raw pi-ai stream for this API (no tier applied). */
 	streamRaw: (
 		model: Model<Api>,
 		context: TranscriptContext,
-		options: CodexStreamOptions,
+		options: PriorityStreamOptions,
 	) => AssistantMessageEventStream;
 }
 
-export const CODEX_RESPONSES_SPEC: ApiTierSpec = {
-	provider: CODEX_PROVIDER,
-	api: "openai-codex-responses",
-	supportedTiers: ["priority"],
-	defaultModels: [...DEFAULT_FAST_MODE_MODELS],
-	streamRaw: (model, context, options) =>
-		openAICodexResponsesApi().stream(model as Model<"openai-codex-responses">, context, options),
-};
+const PROVIDER_OVERLAYS: readonly ProviderOverlay[] = [
+	{
+		provider: "openai-codex",
+		api: "openai-codex-responses",
+		defaultModels: [
+			"openai-codex/gpt-5.6-sol",
+			"openai-codex/gpt-5.6-terra",
+			"openai-codex/gpt-5.6-luna",
+			"openai-codex/gpt-5.5",
+			"openai-codex/gpt-5.4",
+		],
+		streamRaw: (model, context, options) => openAICodexResponsesApi().stream(model, context, options),
+	},
+	{
+		provider: "openai",
+		api: "openai-responses",
+		defaultModels: ["openai/gpt-6.1-sol", "openai/gpt-6-sol", "openai/gpt-6-astra", "openai/gpt-6-luna"],
+		streamRaw: (model, context, options) => openAIResponsesApi().stream(model, context, options),
+	},
+];
 
-export const OPENAI_RESPONSES_SPEC: ApiTierSpec = {
-	provider: OPENAI_PROVIDER,
-	api: "openai-responses",
-	// The Sign in with ChatGPT route rejects `fast` and `flex`; `priority` is what Codex sends.
-	supportedTiers: ["priority"],
-	defaultModels: [...DEFAULT_OPENAI_FAST_MODE_MODELS],
-	streamRaw: (model, context, options) =>
-		openAIResponsesApi().stream(model as Model<"openai-responses">, context, options),
-};
+const DEFAULT_MODELS = PROVIDER_OVERLAYS.flatMap((overlay) => overlay.defaultModels).flatMap((key) => {
+	const model = parseModelKey(key);
 
-export const SPECS: readonly ApiTierSpec[] = [CODEX_RESPONSES_SPEC, OPENAI_RESPONSES_SPEC];
+	return model ? [model] : [];
+});
 
-export interface SupportedModel {
+interface SupportedModel {
 	provider: string;
 	id: string;
 }
 
-export interface ConfigFile {
+interface ConfigFile {
 	/** Record /fast changes in each session's history. */
 	persistState?: boolean;
 	/** Default fast-mode state for new sessions. */
 	active?: boolean;
-	serviceTier?: ServiceTier;
-	allowlist?: string[];
-	blocklist?: string[];
+	serviceTier?: "priority";
+	allowlist?: SupportedModel[];
+	blocklist?: SupportedModel[];
 }
 
-export interface ResolvedConfig {
+interface ResolvedConfig {
 	configPath: string;
 	persistState: boolean;
 	active: boolean;
-	serviceTier: ServiceTier;
 	allowlist: SupportedModel[];
 	blocklist: SupportedModel[];
 }
 
-export interface RuntimeState {
+interface RuntimeState {
 	active: boolean;
-	serviceTier: ServiceTier;
 }
 
-/** The model membership override applied per request. */
-export interface ModelFilter {
-	defaults: readonly SupportedModel[];
-	allowlist: readonly SupportedModel[];
-	blocklist: readonly SupportedModel[];
-}
-
-type OpenAIServiceTierOptions = CodexStreamOptions;
-
-const DEFAULT_CONFIG: Required<Pick<ConfigFile, "persistState" | "active" | "serviceTier" | "allowlist" | "blocklist">> = {
+const DEFAULT_CONFIG: Omit<ResolvedConfig, "configPath"> = {
 	persistState: true,
 	active: false,
-	serviceTier: "priority",
 	allowlist: [],
 	blocklist: [],
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+const StoredState = Type.Object({ active: Type.Boolean(), serviceTier: Type.Literal("priority") });
 
-function stateFromSessionEntry(entry: unknown): RuntimeState | undefined {
-	if (!isRecord(entry) || entry.type !== "custom" || entry.customType !== SESSION_STATE_TYPE) return undefined;
-	if (!isRecord(entry.data) || typeof entry.data.active !== "boolean" || !isServiceTier(entry.data.serviceTier)) {
-		return undefined;
-	}
-	return { active: entry.data.active, serviceTier: entry.data.serviceTier };
-}
+const ConfigInput = Type.Object({
+	persistState: Type.Optional(WireValue),
+	active: Type.Optional(WireValue),
+	serviceTier: Type.Optional(WireValue),
+	allowlist: Type.Optional(WireValue),
+	blocklist: Type.Optional(WireValue),
+});
 
 /** Restore the latest fast-mode state on the active session branch. */
-export function readSessionState(entries: readonly unknown[]): RuntimeState | undefined {
+function readSessionState(entries: readonly SessionEntry[]): RuntimeState | undefined {
 	for (let index = entries.length - 1; index >= 0; index -= 1) {
-		const state = stateFromSessionEntry(entries[index]);
-		if (state) return state;
+		const entry = entries[index];
+
+		if (entry.type === "custom" && entry.customType === SESSION_STATE_TYPE && Value.Check(StoredState, entry.data)) {
+			return { active: entry.data.active };
+		}
 	}
+
 	return undefined;
 }
 
-export function isServiceTier(value: unknown): value is ServiceTier {
-	return typeof value === "string" && (SERVICE_TIERS as readonly string[]).includes(value);
-}
-
-export function parseModelKey(value: string): SupportedModel | undefined {
+function parseModelKey(value: string): SupportedModel | undefined {
 	const trimmed = value.trim();
 	const slash = trimmed.indexOf("/");
+
 	if (slash <= 0 || slash >= trimmed.length - 1) return undefined;
 	const provider = trimmed.slice(0, slash).trim();
 	const id = trimmed.slice(slash + 1).trim();
+
 	return provider && id ? { provider, id } : undefined;
 }
 
-export function normalizeModelKeys(value: unknown): string[] | undefined {
-	if (value === undefined) return undefined;
+function parseModels(value: WireValue): SupportedModel[] | undefined {
 	if (!Array.isArray(value)) return undefined;
-	const keys = value
-		.filter((entry): entry is string => typeof entry === "string")
-		.map((entry) => parseModelKey(entry))
-		.filter((entry): entry is SupportedModel => entry !== undefined)
-		.map((entry) => `${entry.provider}/${entry.id}`);
-	return [...new Set(keys)];
+	const models = new Map<string, SupportedModel>();
+
+	for (const entry of value) {
+		if (!Value.Check(Type.String(), entry)) continue;
+		const model = parseModelKey(entry);
+
+		if (model) models.set(`${model.provider}/${model.id}`, model);
+	}
+
+	return [...models.values()];
 }
 
-export function parseModels(value: unknown): SupportedModel[] | undefined {
-	const keys = normalizeModelKeys(value);
-	if (keys === undefined) return undefined;
-	return keys
-		.map((key) => parseModelKey(key))
-		.filter((entry): entry is SupportedModel => entry !== undefined);
-}
-
-export function configPaths(cwd: string): { project: string; global: string } {
+function configPaths(cwd: string) {
 	return {
 		project: join(cwd, ".pi", "extensions", CONFIG_BASENAME),
 		global: join(getAgentDir(), "extensions", CONFIG_BASENAME),
 	};
 }
 
-export function readConfig(path: string): ConfigFile | undefined {
+function readConfig(path: string): ConfigFile | undefined {
 	if (!existsSync(path)) return undefined;
+
 	try {
-		const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
-		if (!isRecord(parsed)) return {};
+		const parsed = JSON.parse(readFileSync(path, "utf8"));
+
+		if (!Value.Check(ConfigInput, parsed)) return {};
 		const config: ConfigFile = {};
-		if (typeof parsed.persistState === "boolean") config.persistState = parsed.persistState;
-		if (typeof parsed.active === "boolean") config.active = parsed.active;
-		if (isServiceTier(parsed.serviceTier)) config.serviceTier = parsed.serviceTier;
-		const allowlist = normalizeModelKeys(parsed.allowlist);
+
+		if (Value.Check(Type.Boolean(), parsed.persistState)) config.persistState = parsed.persistState;
+
+		if (Value.Check(Type.Boolean(), parsed.active)) config.active = parsed.active;
+
+		if (parsed.serviceTier === "priority") config.serviceTier = parsed.serviceTier;
+		const allowlist = parseModels(parsed.allowlist);
+
 		if (allowlist !== undefined) config.allowlist = allowlist;
-		const blocklist = normalizeModelKeys(parsed.blocklist);
+		const blocklist = parseModels(parsed.blocklist);
+
 		if (blocklist !== undefined) config.blocklist = blocklist;
+
 		return config;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.warn(`[${STATUS_KEY}] Failed to read ${path}: ${message}`);
+
 		return undefined;
 	}
 }
 
-export function writeConfig(path: string, config: ConfigFile): void {
+function writeConfig(path: string, config: ConfigFile): void {
 	try {
 		mkdirSync(dirname(path), { recursive: true });
-		writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+		writeFileSync(path, `${JSON.stringify({
+			...config,
+			allowlist: config.allowlist?.map((model) => `${model.provider}/${model.id}`),
+			blocklist: config.blocklist?.map((model) => `${model.provider}/${model.id}`),
+		}, null, 2)}\n`, "utf8");
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.warn(`[${STATUS_KEY}] Failed to write ${path}: ${message}`);
 	}
 }
 
-export function defaultResolvedConfig(cwd: string): ResolvedConfig {
-	const paths = configPaths(cwd);
-	return {
-		configPath: paths.global,
-		persistState: DEFAULT_CONFIG.persistState,
-		active: DEFAULT_CONFIG.active,
-		serviceTier: DEFAULT_CONFIG.serviceTier,
-		allowlist: [],
-		blocklist: [],
-	};
-}
-
-export function resolveConfig(cwd: string): ResolvedConfig {
+function resolveConfig(cwd: string): ResolvedConfig {
 	const paths = configPaths(cwd);
 	const globalConfig = readConfig(paths.global) ?? {};
 	const projectConfig = readConfig(paths.project) ?? {};
-	const merged: ConfigFile = { ...DEFAULT_CONFIG, ...globalConfig, ...projectConfig };
-	return {
-		configPath: existsSync(paths.project) ? paths.project : paths.global,
-		persistState: merged.persistState ?? DEFAULT_CONFIG.persistState,
-		active: merged.active ?? DEFAULT_CONFIG.active,
-		serviceTier: merged.serviceTier ?? DEFAULT_CONFIG.serviceTier,
-		allowlist: parseModels(merged.allowlist) ?? [],
-		blocklist: parseModels(merged.blocklist) ?? [],
-	};
-}
 
-export function getModelsForApi(specs: readonly ApiTierSpec[], api: Api | undefined): readonly ServiceTier[] {
-	const spec = specs.find((entry) => entry.api === api);
-	return spec?.supportedTiers ?? [];
+	return {
+		...DEFAULT_CONFIG,
+		...globalConfig,
+		...projectConfig,
+		configPath: existsSync(paths.project) ? paths.project : paths.global,
+	};
 }
 
 function contains(list: readonly SupportedModel[], model: Pick<Model<Api>, "provider" | "id">): boolean {
 	return list.some((entry) => entry.provider === model.provider && entry.id === model.id);
 }
 
-/** Merge every spec's built-in defaults into one filter list. */
-export function buildModelFilter(specs: readonly ApiTierSpec[], config: {
-	allowlist?: readonly SupportedModel[];
-	blocklist?: readonly SupportedModel[];
-}): ModelFilter {
-	const defaults = specs
-		.flatMap((spec) => spec.defaultModels)
-		.map((key) => parseModelKey(key))
-		.filter((entry): entry is SupportedModel => entry !== undefined);
-	return { defaults, allowlist: config.allowlist ?? [], blocklist: config.blocklist ?? [] };
-}
-
-/** True when the model may be tiered: its API is spec'd and it survives the default/allow/block override. */
-export function isModelAllowed(
-	model: Pick<Model<Api>, "provider" | "id" | "api"> | undefined,
-	specs: readonly ApiTierSpec[],
-	filter: ModelFilter,
-): boolean {
-	if (!model) return false;
-	if (getModelsForApi(specs, model.api).length === 0) return false;
-	if (!contains(filter.defaults, model) && !contains(filter.allowlist, model)) return false;
-	if (contains(filter.blocklist, model)) return false;
-	return true;
-}
-
-/** The tier to send for this model, or undefined when fast mode should not apply. */
-export function resolveServiceTierForModel(
+/** True when fast mode is active and the model survives the default/allow/block override. */
+function isFastModeActive(
 	model: Pick<Model<Api>, "provider" | "id" | "api"> | undefined,
 	state: RuntimeState,
-	specs: readonly ApiTierSpec[],
-	filter: ModelFilter,
-): ServiceTier | undefined {
-	if (!state.active) return undefined;
-	if (!isModelAllowed(model, specs, filter)) return undefined;
-	const tiers = getModelsForApi(specs, model?.api);
-	return tiers.includes(state.serviceTier) ? state.serviceTier : undefined;
+	config: ResolvedConfig,
+): boolean {
+	return state.active && model !== undefined &&
+		PROVIDER_OVERLAYS.some((overlay) => overlay.api === model.api) &&
+		(contains(DEFAULT_MODELS, model) || contains(config.allowlist, model)) &&
+		!contains(config.blocklist, model);
 }
 
 /**
  * Official fast-mode credit multiplier for a model, from the OpenAI Codex rate
  * card. Falls back to pi-ai's 2x default for models without a published rate.
  */
-export function fastModeMultiplier(modelId: string): number {
+function fastModeMultiplier(modelId: string): number {
 	const fallbackMultiplier = 2;
-	return OFFICIAL_FAST_MULTIPLIER[modelId] ?? fallbackMultiplier;
-}
 
-interface CostableUsage {
-	input: number;
-	output: number;
-	cacheRead: number;
-	cacheWrite: number;
-	cacheWrite1h?: number;
-	cost: Partial<{ input: number; output: number; cacheRead: number; cacheWrite: number; total: number }>;
+	return OFFICIAL_FAST_MULTIPLIER.get(modelId) ?? fallbackMultiplier;
 }
 
 /**
@@ -370,30 +271,22 @@ interface CostableUsage {
  * the official rate-card multiplier is applied. This depends on `model.cost`
  * and pi-ai's tier logic, not on pi-ai's internal multiplier table.
  */
-export function applyFastModePricing(model: Model<Api>, usage: CostableUsage, multiplier: number): void {
-	calculateCost(model as never, usage as never);
+function applyFastModePricing(model: Model<Api>, usage: Usage, multiplier: number): void {
+	calculateCost(model, usage);
 	// Codex does not charge for cache writes, even when the shared model metadata
 	// contains an API cache-write rate.
 	usage.cost.cacheWrite = 0;
-	usage.cost.input = (usage.cost.input ?? 0) * multiplier;
-	usage.cost.output = (usage.cost.output ?? 0) * multiplier;
-	usage.cost.cacheRead = (usage.cost.cacheRead ?? 0) * multiplier;
-	usage.cost.total = (usage.cost.input ?? 0) + (usage.cost.output ?? 0) + (usage.cost.cacheRead ?? 0) + (usage.cost.cacheWrite ?? 0);
-}
-
-function withUsage(msg: unknown): CostableUsage | undefined {
-	const usage = (msg as { usage?: unknown })?.usage as CostableUsage | undefined;
-	if (!usage || typeof usage.input !== "number" || !usage.cost) return undefined;
-	return usage;
+	usage.cost.input = usage.cost.input * multiplier;
+	usage.cost.output = usage.cost.output * multiplier;
+	usage.cost.cacheRead = usage.cost.cacheRead * multiplier;
+	usage.cost.total = usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
 }
 
 function scaleEventUsage(event: AssistantMessageEvent, model: Model<Api>, multiplier: number): void {
 	if (event.type === "done") {
-		const usage = withUsage(event.message);
-		if (usage) applyFastModePricing(model, usage, multiplier);
+		applyFastModePricing(model, event.message.usage, multiplier);
 	} else if (event.type === "error") {
-		const usage = withUsage(event.error);
-		if (usage) applyFastModePricing(model, usage, multiplier);
+		applyFastModePricing(model, event.error.usage, multiplier);
 	}
 }
 
@@ -401,21 +294,22 @@ function scaleEventUsage(event: AssistantMessageEvent, model: Model<Api>, multip
  * Wrap the raw stream, forwarding every event unchanged but recomputing the
  * fast-mode cost on the terminal done/error events.
  */
-export function withFastModePricing(
+function withFastModePricing(
 	stream: AssistantMessageEventStream,
 	model: Model<Api>,
 	multiplier: number,
 ): AssistantMessageEventStream {
-	if (multiplier === 1) return stream;
 	const out = createAssistantMessageEventStream();
 	void (async () => {
 		let message: AssistantMessage | undefined;
+
 		try {
 			for await (const event of stream) {
 				message = event.type === "done" ? event.message : event.type === "error" ? event.error : event.partial;
 				scaleEventUsage(event, model, multiplier);
 				out.push(event);
 			}
+
 			out.end(await stream.result());
 		} catch (error) {
 			const failed: AssistantMessage = {
@@ -434,11 +328,13 @@ export function withFastModePricing(
 				stopReason: "error",
 				errorMessage: error instanceof Error ? error.message : String(error),
 			};
+
 			applyFastModePricing(model, failed.usage, multiplier);
 			out.push({ type: "error", reason: "error", error: failed });
 			out.end(failed);
 		}
 	})();
+
 	return out;
 }
 
@@ -448,70 +344,54 @@ export function withFastModePricing(
  * `serviceTier` only when a tier applies for this model. Mirrors the option
  * handling of the published pi-openai-service-tier extension.
  */
-export function buildFullOpenAIOptions(
+function buildFullOpenAIOptions(
 	model: Model<Api>,
 	options: SimpleStreamOptions | undefined,
-	serviceTier: ServiceTier | undefined,
-): OpenAIServiceTierOptions {
+	serviceTier: "priority" | undefined,
+): PriorityStreamOptions {
 	const clampedReasoning = options?.reasoning ? clampThinkingLevel(model, options.reasoning) : undefined;
 	const reasoningEffort = clampedReasoning === "off" ? undefined : clampedReasoning;
-	const result: OpenAIServiceTierOptions = {
+
+	const result: PriorityStreamOptions = {
 		...options,
 		maxTokens: options?.maxTokens ?? (model.maxTokens > 0 ? Math.min(model.maxTokens, 32_000) : undefined),
 		reasoningEffort,
 	};
+
 	if (serviceTier) result.serviceTier = serviceTier;
+
 	return result;
 }
 
-function getConfigCwd(ctx: ExtensionContext): string {
-	return ctx.cwd || process.cwd();
-}
-
-export function statusText(
-	model: Pick<Model<Api>, "provider" | "id" | "api"> | undefined,
-	state: RuntimeState,
-	specs: readonly ApiTierSpec[],
-	filter: ModelFilter,
-): string {
-	const tier = resolveServiceTierForModel(model, state, specs, filter);
-	if (tier && model) {
-		return `⚡ FAST · $ ${fastModeMultiplier(model.id)}×`;
-	}
-	// Keep the footer quiet for inactive or non-tierable models. The active model
-	// and provider already identify the current context, while /fast status can
-	// still explain why fast mode did not apply when explicitly requested.
-	return "";
-}
-
 export default function piFastMode(pi: ExtensionAPI): void {
-	let config: ResolvedConfig = defaultResolvedConfig(process.cwd());
-	let state: RuntimeState = { active: config.active, serviceTier: config.serviceTier };
+	let config: ResolvedConfig = { ...DEFAULT_CONFIG, configPath: configPaths(process.cwd()).global };
+	let state: RuntimeState = { active: config.active };
 
-	function refreshConfig(ctx: ExtensionContext): ResolvedConfig {
-		config = resolveConfig(getConfigCwd(ctx));
-		return config;
+	function refreshConfig(ctx: ExtensionContext): void {
+		config = resolveConfig(ctx.cwd || process.cwd());
 	}
 
 	function appendSessionState(): void {
 		if (!config.persistState) return;
-		pi.appendEntry(SESSION_STATE_TYPE, { ...state });
+		pi.appendEntry(SESSION_STATE_TYPE, { ...state, serviceTier: "priority" });
 	}
 
 	function restoreSessionState(ctx: ExtensionContext, reason: string | undefined): void {
 		const entries = ctx.sessionManager.getEntries();
 		const saved = config.persistState ? readSessionState(ctx.sessionManager.getBranch()) : undefined;
 		const contextEntries = ctx.sessionManager.buildContextEntries?.() ?? entries;
+
 		const hasConversation = contextEntries.some(
 			(entry) =>
-				isRecord(entry) &&
 				(entry.type === "message" ||
 					entry.type === "custom_message" ||
 					entry.type === "compaction" ||
 					entry.type === "branch_summary"),
 		);
+
 		if (saved) {
 			state = saved;
+
 			return;
 		}
 
@@ -520,37 +400,44 @@ export default function piFastMode(pi: ExtensionAPI): void {
 		// than being changed retroactively by the global config.
 		state = {
 			active: reason === "new" || !hasConversation ? config.active : false,
-			serviceTier: config.serviceTier,
 		};
 		appendSessionState();
 	}
 
 	function updateStatus(ctx: ExtensionContext): void {
-		const filter = buildModelFilter(SPECS, config);
-		ctx.ui.setStatus(STATUS_KEY, statusText(ctx.model, state, SPECS, filter) || undefined);
+		const text = ctx.model && isFastModeActive(ctx.model, state, config)
+			? `⚡ FAST · $ ${fastModeMultiplier(ctx.model.id)}×`
+			: undefined;
+
+		ctx.ui.setStatus(STATUS_KEY, text);
 	}
 
-	function supportedListText(filter: ModelFilter): string {
-		const all = [...filter.defaults, ...filter.allowlist, ...filter.blocklist];
+	function supportedListText(): string {
+		const all = [...DEFAULT_MODELS, ...config.allowlist, ...config.blocklist];
 		const keys = [...new Set(all.map((model) => `${model.provider}/${model.id}`))];
+
 		return keys.join(", ") || "none";
 	}
 
 	function notifyStatus(ctx: ExtensionContext): void {
-		const filter = buildModelFilter(SPECS, config);
-		const tier = resolveServiceTierForModel(ctx.model, state, SPECS, filter);
+		const active = isFastModeActive(ctx.model, state, config);
 		const modelKey = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "none";
-		if (tier) {
-			ctx.ui.notify(`Fast mode: ${tier} service tier for ${modelKey}. Cost accounting includes the priority multiplier.`, "info");
+
+		if (active) {
+			ctx.ui.notify(`Fast mode: priority service tier for ${modelKey}. Cost accounting includes the priority multiplier.`, "info");
+
 			return;
 		}
+
 		if (state.active) {
 			ctx.ui.notify(
-				`Fast mode is on, but ${modelKey} is not tierable (missing API spec, not on the default/allowlist, or blocked). Mentioned models: ${supportedListText(filter)}.`,
+				`Fast mode is on, but ${modelKey} is not tierable (missing API spec, not on the default/allowlist, or blocked). Mentioned models: ${supportedListText()}.`,
 				"warning",
 			);
+
 			return;
 		}
+
 		ctx.ui.notify(`Fast mode is off. Current model: ${modelKey}.`, "info");
 	}
 
@@ -580,15 +467,16 @@ export default function piFastMode(pi: ExtensionAPI): void {
 		);
 	}
 
-	for (const spec of SPECS) {
+	for (const spec of PROVIDER_OVERLAYS) {
 		// Overlay the built-in provider to preserve its models and authentication.
 		pi.registerProvider(spec.provider, {
 			api: spec.api,
 			streamSimple(model, context, options) {
-				const filter = buildModelFilter(SPECS, config);
-				const serviceTier = resolveServiceTierForModel(model, state, SPECS, filter);
+				const serviceTier = isFastModeActive(model, state, config) ? "priority" : undefined;
 				const stream = spec.streamRaw(model, context, buildFullOpenAIOptions(model, options, serviceTier));
+
 				if (!serviceTier) return stream;
+
 				return withFastModePricing(stream, model, fastModeMultiplier(model.id));
 			},
 		});
@@ -598,42 +486,60 @@ export default function piFastMode(pi: ExtensionAPI): void {
 		description: "Toggle OpenAI fast mode; /fast [on|off|status|default]",
 		getArgumentCompletions: (prefix) => {
 			const normalized = prefix.trimStart().toLowerCase();
+
 			if (normalized.startsWith("default ")) {
 				const subprefix = normalized.slice("default ".length).trim();
 				const values = ["on", "off", "status"];
-				const items = values.filter((value) => value.startsWith(subprefix));
-				return items.length ? items.map((value) => ({ value, label: value })) : null;
+				const items = values.flatMap((value) => value.startsWith(subprefix) ? [{ value, label: value }] : []);
+
+				return items.length ? items : null;
 			}
+
 			const values = ["on", "off", "status", "default"];
-			const items = values.filter((value) => value.startsWith(normalized.trim()));
-			return items.length ? items.map((value) => ({ value, label: value })) : null;
+			const items = values.flatMap((value) => value.startsWith(normalized.trim()) ? [{ value, label: value }] : []);
+
+			return items.length ? items : null;
 		},
 		handler: async (args, ctx) => {
 			const arg = args.trim().toLowerCase();
 			const [scope, value, ...extra] = arg.split(/\s+/).filter(Boolean);
+
 			if (scope === "default") {
 				if (extra.length > 0) {
 					ctx.ui.notify("Usage: /fast [on|off|status] or /fast default [on|off|status]", "error");
+
 					return;
 				}
+
 				if (!value) {
 					refreshConfig(ctx);
+
 					return setDefault(ctx, !config.active);
 				}
+
 				if (value === "on") return setDefault(ctx, true);
+
 				if (value === "off") return setDefault(ctx, false);
+
 				if (value === "status") return notifyDefault(ctx);
 				ctx.ui.notify("Usage: /fast [on|off|status] or /fast default [on|off|status]", "error");
+
 				return;
 			}
+
 			if (!arg) return setActive(ctx, !state.active);
+
 			if (arg === "on") return setActive(ctx, true);
+
 			if (arg === "off") return setActive(ctx, false);
+
 			if (arg === "status") {
 				refreshConfig(ctx);
 				updateStatus(ctx);
+
 				return notifyStatus(ctx);
 			}
+
 			ctx.ui.notify("Usage: /fast [on|off|status] or /fast default [on|off|status]", "error");
 		},
 	});
@@ -642,17 +548,20 @@ export default function piFastMode(pi: ExtensionAPI): void {
 		refreshConfig(ctx);
 		restoreSessionState(ctx, event.reason);
 		updateStatus(ctx);
+
 		if (state.active) notifyStatus(ctx);
 	});
 
 	pi.on("session_tree", async (_event, ctx) => {
 		refreshConfig(ctx);
 		const saved = config.persistState ? readSessionState(ctx.sessionManager.getBranch()) : undefined;
+
 		if (saved) {
 			state = saved;
 		} else if (config.persistState) {
-			state = { active: false, serviceTier: config.serviceTier };
+			state = { active: false };
 		}
+
 		updateStatus(ctx);
 	});
 

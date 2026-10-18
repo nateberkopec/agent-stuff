@@ -17,7 +17,7 @@
   ],
   "overrides": [
     {
-      "files": ["extensions/fast-mode/*.ts", "extensions/openai-guidance/*.ts"],
+      "files": ["extensions/openai-guidance/*.ts"],
       "rules": {
         "anti-slop/no-array-filter-map": "off",
         "anti-slop/no-known-value-widening": "off",

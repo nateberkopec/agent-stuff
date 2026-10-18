@@ -43,7 +43,7 @@ export function parseUSModelCatalog(markdown: string): CatalogEntry[] {
 
 	if (entries.length === 0) throw new Error("Fireworks US-only model table is empty or malformed");
 
-	if (entries.some(({ id }) => !US_MODEL_ID.test(id))) {
+	if (entries.some(({ id }) => !isUSModelId(id))) {
 		throw new Error("Fireworks US-only model table contains an unsafe model ID");
 	}
 
@@ -69,38 +69,46 @@ export function buildUSModels(entries: CatalogEntry[], apiModels: ApiModel[]): F
 
 	for (const model of apiModels) if (Value.Check(Type.String(), model.id)) metadata.set(model.id, model);
 
-	return entries.map(({ id, name }) => {
+	const models = entries.flatMap(({ id, name }): FireworksModel[] => {
 		const details = metadataIdCandidates(id)
 			.map((candidate) => metadata.get(candidate))
 			.find(Boolean);
 
 		if (
 			!details ||
-			details.supports_chat !== true ||
+			!Value.Check(Type.Boolean(), details.supports_chat) ||
 			!Value.Check(Type.Number({ exclusiveMinimum: 0 }), details.context_length)
 		) {
 			throw new Error(`Fireworks returned no usable chat metadata for US-only model: ${id}`);
 		}
 
-		return {
-			id,
-			name: `${name} (Fireworks US-only)`,
-			api: "openai-completions",
-			provider: FIREWORKS_PROVIDER,
-			baseUrl: FIREWORKS_BASE_URL,
-			reasoning: true,
-			input: details.supports_image_input === true ? ["text", "image"] : ["text"],
-			cost: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 },
-			contextWindow: details.context_length,
-			maxTokens: Math.min(details.context_length, 131_072),
-			compat: {
-				supportsStore: false,
-				supportsDeveloperRole: false,
-				sendSessionAffinityHeaders: true,
-				supportsLongCacheRetention: false,
+		if (details.supports_chat === false) return [];
+
+		return [
+			{
+				id,
+				name: `${name} (Fireworks US-only)`,
+				api: "openai-completions",
+				provider: FIREWORKS_PROVIDER,
+				baseUrl: FIREWORKS_BASE_URL,
+				reasoning: true,
+				input: details.supports_image_input === true ? ["text", "image"] : ["text"],
+				cost: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 },
+				contextWindow: details.context_length,
+				maxTokens: Math.min(details.context_length, 131_072),
+				compat: {
+					supportsStore: false,
+					supportsDeveloperRole: false,
+					sendSessionAffinityHeaders: true,
+					supportsLongCacheRetention: false,
+				},
 			},
-		};
+		];
 	});
+
+	if (models.length === 0) throw new Error("Fireworks US-only catalog contains no usable chat models");
+
+	return models;
 }
 
 export async function fetchUSModels(
@@ -128,7 +136,9 @@ export async function fetchUSModels(
 }
 
 export function isUSModelId(id: unknown): id is string {
-	return Value.Check(Type.String({ pattern: US_MODEL_ID.source }), id);
+	return (
+		id === "accounts/fireworks/models/muse-spark-open" || Value.Check(Type.String({ pattern: US_MODEL_ID.source }), id)
+	);
 }
 
 export function cachedUSModels(models: readonly Model<Api>[]): FireworksModel[] {

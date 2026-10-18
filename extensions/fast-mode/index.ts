@@ -33,6 +33,7 @@ import { calculateCost, clampThinkingLevel, createAssistantMessageEventStream } 
 import { openAICodexResponsesApi, openAIResponsesApi } from "@earendil-works/pi-ai/compat";
 import type {
 	Api,
+	AssistantMessage,
 	AssistantMessageEvent,
 	AssistantMessageEventStream,
 	TranscriptContext,
@@ -349,7 +350,8 @@ export function resolveServiceTierForModel(
  * card. Falls back to pi-ai's 2x default for models without a published rate.
  */
 export function fastModeMultiplier(modelId: string): number {
-	return OFFICIAL_FAST_MULTIPLIER[modelId] ?? 2;
+	const fallbackMultiplier = 2;
+	return OFFICIAL_FAST_MULTIPLIER[modelId] ?? fallbackMultiplier;
 }
 
 interface CostableUsage {
@@ -376,7 +378,6 @@ export function applyFastModePricing(model: Model<Api>, usage: CostableUsage, mu
 	usage.cost.input = (usage.cost.input ?? 0) * multiplier;
 	usage.cost.output = (usage.cost.output ?? 0) * multiplier;
 	usage.cost.cacheRead = (usage.cost.cacheRead ?? 0) * multiplier;
-	usage.cost.cacheWrite = (usage.cost.cacheWrite ?? 0) * multiplier;
 	usage.cost.total = (usage.cost.input ?? 0) + (usage.cost.output ?? 0) + (usage.cost.cacheRead ?? 0) + (usage.cost.cacheWrite ?? 0);
 }
 
@@ -408,15 +409,34 @@ export function withFastModePricing(
 	if (multiplier === 1) return stream;
 	const out = createAssistantMessageEventStream();
 	void (async () => {
+		let message: AssistantMessage | undefined;
 		try {
 			for await (const event of stream) {
+				message = event.type === "done" ? event.message : event.type === "error" ? event.error : event.partial;
 				scaleEventUsage(event, model, multiplier);
 				out.push(event);
 			}
 			out.end(await stream.result());
 		} catch (error) {
-			out.end();
-			throw error;
+			const failed: AssistantMessage = {
+				...(message ?? {
+					role: "assistant",
+					content: [],
+					api: model.api,
+					provider: model.provider,
+					model: model.id,
+					usage: {
+						input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
+						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+					},
+					timestamp: Date.now(),
+				}),
+				stopReason: "error",
+				errorMessage: error instanceof Error ? error.message : String(error),
+			};
+			applyFastModePricing(model, failed.usage, multiplier);
+			out.push({ type: "error", reason: "error", error: failed });
+			out.end(failed);
 		}
 	})();
 	return out;
@@ -456,8 +476,7 @@ export function statusText(
 ): string {
 	const tier = resolveServiceTierForModel(model, state, specs, filter);
 	if (tier && model) {
-		const mult = OFFICIAL_FAST_MULTIPLIER[model.id];
-		return mult !== undefined ? `⚡ FAST · $ ${mult}×` : "⚡ FAST";
+		return `⚡ FAST · $ ${fastModeMultiplier(model.id)}×`;
 	}
 	// Keep the footer quiet for inactive or non-tierable models. The active model
 	// and provider already identify the current context, while /fast status can

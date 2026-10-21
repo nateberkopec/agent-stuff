@@ -13,7 +13,7 @@ end
 init_check_context $argv
 print_header
 
-for check in check_mise_config check_env_files check_secrets check_mise_tasks check_github_actions_pinned check_hk_config check_hk_precommit check_hk_installed check_git_cleanliness
+for check in check_mise_config check_env_files check_secrets check_mise_tasks check_github_actions_pinned check_github_actions_lint check_hk_config check_hk_precommit check_hk_installed check_git_cleanliness
     $check
 end
 

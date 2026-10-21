@@ -10,6 +10,7 @@ ruby = "4.0.7"
 hk = "2.4.0"
 gitleaks = "8.30.1"
 uv = "0.12.21"
+jactionlint = "2.2.0"
 
 [tasks.setup]
 description = "Install development dependencies"
@@ -34,9 +35,14 @@ run = "ruby tools/lint_agent_skills.rb"
 description = "Scan the working tree for secrets"
 run = "gitleaks dir --redact=75 --no-banner --no-color --max-target-megabytes 5 ."
 
+[tasks."lint:actions"]
+description = "Check GitHub Actions workflows"
+sources = [".github/workflows/*.yml"]
+run = "jactionlint --strict-exit"
+
 [tasks.lint]
 description = "Run all lint checks"
-depends = ["lint:javascript", "lint:format", "lint:skills", "lint:secrets"]
+depends = ["lint:javascript", "lint:format", "lint:skills", "lint:secrets", "lint:actions"]
 
 [tasks."test:javascript"]
 description = "Run JavaScript extension tests"

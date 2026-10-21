@@ -25,7 +25,7 @@ Read only the branch needed:
 
 - For mise and environment configuration, read [references/mise-and-hooks.md](references/mise-and-hooks.md).
 - For the standard task set, read [references/standard-tasks.md](references/standard-tasks.md); for aliases, serve behavior, and test runtime, read [references/project-commands.md](references/project-commands.md); for hooks, read [references/hk-hooks.md](references/hk-hooks.md).
-- For gitleaks, baselines, secret handling, and GitHub Actions, read [references/security-and-ci.md](references/security-and-ci.md). Baseline generation must use `--redact=75`; confirm the report contains no recovered values before committing it.
+- For gitleaks, baselines, secret handling, and GitHub Actions (jactionlint, pinned actions), read [references/security-and-ci.md](references/security-and-ci.md). Baseline generation must use `--redact=75`; confirm the report contains no recovered values before committing it.
 - For Ruby dependencies, Standard, complexity, dead-code, flog, flay, and Bundler preparation, read [references/ruby-projects.md](references/ruby-projects.md).
 
 Prefer symlinking reusable checker tools from `~/.agents/skills/dev-env-setup/scripts/` rather than copying them.
@@ -39,4 +39,4 @@ Prefer symlinking reusable checker tools from `~/.agents/skills/dev-env-setup/sc
 5. Run the checker again.
 6. Confirm `git status` is clean for foreign repositories; for owned repositories, account for every intended tracked change.
 
-Do not declare completion while a checker failure, secret exposure, unpinned action, failing task, or unexplained Git change remains.
+Do not declare completion while a checker failure, secret exposure, unpinned action, jactionlint finding, failing task, or unexplained Git change remains.

@@ -16,6 +16,9 @@ export default function overlayFixture(pi: ExtensionAPI) {
 				"**You:** Explain.\n\n**Assistant:** Short answer.\n\nAnother paragraph.",
 				"**Assistant:** 日本語 🙂 café\n\n```sh\necho dry-run\n```\n\n" + "A long wrapped response. ".repeat(30),
 			]) {
+				let transcript = text;
+				const submitted: string[] = [];
+
 				// SAFETY: openOverlay requests custom<void>; this fixture supplies its complete render-only UI surface.
 				const fake = {
 					...ctx,
@@ -23,7 +26,12 @@ export default function overlayFixture(pi: ExtensionAPI) {
 						...ctx.ui,
 						custom: async (factory) => {
 							try {
-								const component = factory({ requestRender() {} }, ctx.ui.theme, { matches: () => false }, () => {});
+								const component = factory(
+									{ terminal: { rows: 30 }, requestRender() {} },
+									ctx.ui.theme,
+									{ matches: () => false },
+									() => {},
+								);
 
 								for (const width of [3, 12, 43, 90, 118]) {
 									const rows = component.render(width);
@@ -42,6 +50,26 @@ export default function overlayFixture(pi: ExtensionAPI) {
 
 									cases++;
 								}
+
+								transcript = Array.from({ length: 80 }, (_, i) => `Line ${i + 1}`).join("\n");
+								const render = () => component.render(118).map(stripVTControlCharacters).join("\n");
+								assert.match(render(), /TYPING.*Following latest/);
+								component.handleInput("draft jk");
+								component.handleInput("\t");
+								component.handleInput("g");
+								assert.match(render(), /READING \| 1-19\/80 \| Paused/);
+								component.handleInput("j");
+								assert.match(render(), /READING \| 2-20\/80/);
+								component.handleInput("\u001b[A");
+								assert.match(render(), /READING \| 1-19\/80/);
+								transcript += "\nNew streamed line";
+								assert.match(render(), /READING \| 1-19\/81 \| Paused/);
+								component.handleInput("G");
+								assert.match(render(), /READING \| 63-81\/81 \| Following latest/);
+								component.handleInput("\t");
+								assert.match(render(), /> draft jk/);
+								component.handleInput("\r");
+								assert.deepEqual(submitted, ["draft jk"]);
 							} catch (error) {
 								failures.push(error instanceof Error ? error.message : String(error));
 							}
@@ -51,9 +79,9 @@ export default function overlayFixture(pi: ExtensionAPI) {
 
 				openOverlay(fake, {
 					title: "BTW",
-					text: () => text,
+					text: () => transcript,
 					status: () => "Ready",
-					submit() {},
+					submit: (question) => submitted.push(question),
 					cancel() {},
 				});
 				// openOverlay intentionally sanitizes UI errors; assert that each render completed too.

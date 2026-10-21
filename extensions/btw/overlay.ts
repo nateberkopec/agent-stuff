@@ -2,7 +2,15 @@
 // Modified: configurable title, narrow sizing, native cursor handling, close without a dialog.
 // Apache-2.0; see ../MITSUHIKO-AGENT-STUFF-LICENSE.txt.
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Input, Markdown, truncateToWidth, visibleWidth, type Focusable } from "@earendil-works/pi-tui";
+import {
+	Input,
+	Markdown,
+	ScrollView,
+	matchesKey,
+	truncateToWidth,
+	visibleWidth,
+	type Focusable,
+} from "@earendil-works/pi-tui";
 import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 
 export interface ChatView {
@@ -22,6 +30,9 @@ export function openOverlay(ctx: ExtensionContext, view: ChatView) {
 		.custom<void>(
 			(tui, theme, keys, done) => {
 				const input = new Input();
+				const scroll = new ScrollView({ render: () => [], invalidate() {} }, { follow: "end" });
+				let reading = false;
+				let focused = true;
 
 				const finish = () => {
 					closed = true;
@@ -46,15 +57,25 @@ export function openOverlay(ctx: ExtensionContext, view: ChatView) {
 					handleInput: (data: string) => void;
 				} = {
 					get focused() {
-						return input.focused;
+						return focused;
 					},
 					set focused(value) {
-						input.focused = value;
+						focused = value;
+						input.focused = value && !reading;
 					},
 					handleInput(data) {
 						if (keys.matches(data, "tui.select.cancel")) {
 							view.cancel();
 							finish();
+						} else if (matchesKey(data, "tab")) {
+							reading = !reading;
+							input.focused = focused && !reading;
+							tui.requestRender();
+						} else if (reading) {
+							if (data === "k" || matchesKey(data, "up")) scroll.scrollBy(-1);
+							else if (data === "j" || matchesKey(data, "down")) scroll.scrollBy(1);
+							else if (data === "g") scroll.scrollTo(0, { disableFollow: true });
+							else if (data === "G") scroll.scrollToEnd();
 						} else input.handleInput(data);
 					},
 					render(width) {
@@ -73,16 +94,36 @@ export function openOverlay(ctx: ExtensionContext, view: ChatView) {
 							return `${theme.fg("borderMuted", "│")}${clipped}${" ".repeat(Math.max(0, inner - visibleWidth(clipped)))}${theme.fg("borderMuted", "│")}`;
 						};
 
-						const height = Math.max(1, Math.min(18, (process.stdout.rows ?? 30) - 10));
-						const transcript = new Markdown(view.text(), 0, 0, getMarkdownTheme()).render(inner).slice(-height);
+						const height = Math.max(1, Math.floor((tui.terminal.rows ?? 30) * 0.9) - 8);
+						const lines = new Markdown(view.text(), 0, 0, getMarkdownTheme()).render(inner);
+						scroll.updateLayout(lines.length, height, () => tui.requestRender());
+						const transcript = lines.slice(scroll.scrollTop, scroll.scrollTop + height);
+						const position = `${scroll.scrollTop + 1}-${Math.min(lines.length, scroll.scrollTop + height)}/${lines.length}`;
+						const mode = reading ? "READING" : "TYPING";
 
 						return [
 							border("top"),
 							line(theme.fg("accent", theme.bold(view.title))),
 							...transcript.map(line),
-							line(theme.fg("dim", view.status())),
-							line(input.render(inner)[0] ?? ""),
-							line(theme.fg("dim", "Enter: send · Esc: close")),
+							line(
+								theme.fg(
+									"accent",
+									`${mode} | ${position} | ${scroll.isFollowingEnd ? "Following latest" : "Paused"} | ${view.status()}`,
+								),
+							),
+							line(
+								reading
+									? theme.fg("dim", input.getValue() || "Tab to type a follow-up")
+									: (input.render(inner)[0] ?? ""),
+							),
+							line(
+								theme.fg(
+									"dim",
+									reading
+										? "Tab: type | j/k or arrows: scroll | g/G: top/bottom | Esc: close"
+										: "Tab: read | Enter: send | Esc: close",
+								),
+							),
 							border("bottom"),
 						];
 					},

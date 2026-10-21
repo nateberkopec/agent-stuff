@@ -38,10 +38,29 @@ The audit picks up `.gitleaks-baseline.json` automatically. Before committing it
 
 ### 12. GitHub Actions
 
-Pin GitHub Actions workflow dependencies to full commit SHAs:
+Lint workflows with [jactionlint](https://jactionlint.jdx.dev) in its default profile. Pin it in the project mise `[tools]` and add a `lint:actions` task to the `lint` fan-out:
+
+```toml
+[tools]
+jactionlint = "2.2.0"
+
+[tasks."lint:actions"]
+description = "Check GitHub Actions workflows"
+sources = [".github/workflows/*.yml", ".github/workflows/*.yaml", ".github/jactionlint.yaml"]
+run = "jactionlint --strict-exit"
+```
+
+Pay the whole backlog down on adoption; the audit runs `jactionlint --strict-exit --no-baseline`, so only a clean run passes.
+
+1. Preview mechanical fixes with `jactionlint --diff --fix=unsafe`, review them, then apply with `--fix=unsafe`. Before accepting `persist-credentials: false`, confirm no later step pushes or fetches with the checkout credentials.
+2. Set `timeout-minutes` on each remaining job from `jactionlint --suggest-timeouts`, which reads recent run durations.
+3. List self-hosted runner labels under `self-hosted-runner.labels` in `.github/jactionlint.yaml`; globs such as `my-runner-*` work.
+4. Fix everything else by hand. `jactionlint --explain RULE` describes a rule and its fix.
+
+Pin third-party actions to full commit SHAs, with the version as a comment:
 
 ```yaml
 - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 ```
 
-Resolve tags with `git ls-remote https://github.com/<owner>/<repo>.git refs/tags/<tag>`. Do not add extra tooling unless the project already has it; the compliance checker flags unpinned `uses: owner/repo@ref` entries.
+Resolve tags with `git ls-remote https://github.com/<owner>/<repo>.git refs/tags/<tag>`.

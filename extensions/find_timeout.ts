@@ -22,11 +22,8 @@ export default function findTimeoutExtension(pi: ExtensionAPI) {
 
 		if (validFindTimeout(event.input.timeout)) return undefined;
 
-		return {
-			block: true,
-			reason:
-				`find commands must set timeout <= ${MAX_FIND_TIMEOUT_SECONDS}s. ` +
-				`Retry this bash call with {"timeout": ${MAX_FIND_TIMEOUT_SECONDS}}.`,
-		};
+		event.input.timeout = MAX_FIND_TIMEOUT_SECONDS;
+
+		return undefined;
 	});
 }

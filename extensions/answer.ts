@@ -186,6 +186,66 @@ function restoreQuestionBlock(question: ExtractedQuestion, assistantTexts: strin
 	return question;
 }
 
+const OTHER_ANSWER = "Other (type an answer)";
+
+function questionChoices(question: string): string[] {
+	const inline = question.match(/\bChoices:[ \t]*([^\n]*)/i);
+	const bullets = question.match(/\bChoices:[ \t]*\n((?:[ \t]*[-*][ \t]+[^\n]+\n?)+)/i);
+	const listed = bullets?.[1] ?? question;
+
+	const pattern = bullets ? /^[ \t]*[-*][ \t]+(.+)$/gm : /^\s*(?:\d+[.)]|[A-Za-z][.)]|\(\d+\)|\([A-Za-z]\))\s+(.+)$/gm;
+
+	const choices =
+		inline && /[/,]/.test(inline[1])
+			? inline[1].split(/[/,]/).map((choice) => choice.trim())
+			: [...listed.matchAll(pattern)].map((match) => match[1].trim());
+
+	const unique = [...new Set(choices.filter(Boolean))];
+
+	return unique.length >= 2 ? unique : [];
+}
+
+function formatAnswers(questions: ExtractedQuestion[], answers: string[]): string {
+	return questions
+		.map((question, index) => {
+			const context = question.context ? `\n> ${question.context}` : "";
+
+			return `Q: ${question.question}${context}\nA: ${answers[index]?.trim() || "(no answer)"}`;
+		})
+		.join("\n\n");
+}
+
+async function askWithDialogs(
+	questions: ExtractedQuestion[],
+	ctx: ExtensionContext,
+	signal?: AbortSignal,
+): Promise<string | null> {
+	const answers: string[] = [];
+
+	for (const question of questions) {
+		if (signal?.aborted) return null;
+		const title = question.context ? `${question.question}\n\n${question.context}` : question.question;
+		const choices = questionChoices(question.question);
+		let answer: string | undefined;
+
+		if (choices.length > 0) {
+			answer = await ctx.ui.select(title, [...choices.filter((choice) => choice !== OTHER_ANSWER), OTHER_ANSWER], {
+				signal,
+			});
+		}
+
+		if (choices.length === 0 || answer === OTHER_ANSWER) {
+			if (signal?.aborted) return null;
+			answer = await ctx.ui.input(title, "Type your answer", { signal });
+		}
+
+		if (answer === undefined || signal?.aborted) return null;
+		answers.push(answer);
+	}
+
+	return formatAnswers(questions, answers);
+}
+
 /**
  * Interactive Q&A component for answering extracted questions
  */
@@ -259,23 +319,7 @@ class QnAComponent implements Component {
 	private submit(): void {
 		this.saveCurrentAnswer();
 
-		// Build the response text
-		const parts: string[] = [];
-
-		for (let i = 0; i < this.questions.length; i++) {
-			const q = this.questions[i];
-			const a = this.answers[i]?.trim() || "(no answer)";
-			parts.push(`Q: ${q.question}`);
-
-			if (q.context) {
-				parts.push(`> ${q.context}`);
-			}
-
-			parts.push(`A: ${a}`);
-			parts.push("");
-		}
-
-		this.onDone(parts.join("\n").trim());
+		this.onDone(formatAnswers(this.questions, this.answers));
 	}
 
 	private cancel(): void {
@@ -500,7 +544,7 @@ export default function (pi: ExtensionAPI) {
 			name: "answer",
 			label: "Answer questions",
 			description:
-				"Collect the user's answers in an interactive Q&A screen. Use for each grilling question round. Supply complete question text, choices, and recommendations; the user's answers are returned directly. If cancelled, stop the interview until the user asks to resume.",
+				"Collect the user's answers in an interactive Q&A screen. Use for each grilling question round. Supply complete question text, choices, and recommendations; write choices as Choices: A / B / C or numbered/lettered lines. The user's answers are returned directly. If cancelled, stop the interview until the user asks to resume.",
 			exposure: "model-only",
 			parameters: Type.Object({
 				questions: Type.Array(
@@ -515,8 +559,8 @@ export default function (pi: ExtensionAPI) {
 				),
 			}),
 			async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-				if (ctx.mode !== "tui") {
-					throw new Error("answer requires interactive terminal mode; ask the questions in chat instead.");
+				if (!ctx.hasUI) {
+					throw new Error("answer requires a UI; ask the questions in chat instead.");
 				}
 
 				if (signal?.aborted) {
@@ -531,14 +575,17 @@ export default function (pi: ExtensionAPI) {
 				let answers: string | null;
 
 				try {
-					answers = await ctx.ui.custom<string | null>((tui, _theme, _kb, done) => {
-						abortHandler = () => done(null);
-						signal?.addEventListener("abort", abortHandler, { once: true });
+					answers =
+						ctx.mode !== "tui"
+							? await askWithDialogs(params.questions, ctx, signal)
+							: await ctx.ui.custom<string | null>((tui, _theme, _kb, done) => {
+									abortHandler = () => done(null);
+									signal?.addEventListener("abort", abortHandler, { once: true });
 
-						if (signal?.aborted) done(null);
+									if (signal?.aborted) done(null);
 
-						return new QnAComponent(params.questions, tui, done);
-					});
+									return new QnAComponent(params.questions, tui, done);
+								});
 				} finally {
 					if (abortHandler) signal?.removeEventListener("abort", abortHandler);
 				}

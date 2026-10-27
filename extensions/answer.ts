@@ -188,21 +188,27 @@ function restoreQuestionBlock(question: ExtractedQuestion, assistantTexts: strin
 
 const OTHER_ANSWER = "Other (type an answer)";
 
-function questionChoices(question: string): string[] {
-	const inline = question.match(/\bChoices:[ \t]*([^\n]*)/i);
-	const bullets = question.match(/\bChoices:[ \t]*\n((?:[ \t]*[-*][ \t]+[^\n]+\n?)+)/i);
-	const listed = bullets?.[1] ?? question;
+interface AskedQuestion {
+	question: string;
+	context?: string;
+	choices?: string[];
+	recommended?: number;
+}
 
-	const pattern = bullets ? /^[ \t]*[-*][ \t]+(.+)$/gm : /^\s*(?:\d+[.)]|[A-Za-z][.)]|\(\d+\)|\([A-Za-z]\))\s+(.+)$/gm;
+function choiceText(question: AskedQuestion, index: number): string {
+	return `${String.fromCharCode(65 + index)}. ${question.choices![index]}`;
+}
 
-	const choices =
-		inline && /[/,]/.test(inline[1])
-			? inline[1].split(/[/,]/).map((choice) => choice.trim())
-			: [...listed.matchAll(pattern)].map((match) => match[1].trim());
+function choiceLabel(question: AskedQuestion, index: number): string {
+	const text = choiceText(question, index);
 
-	const unique = [...new Set(choices.filter(Boolean))];
+	return index === question.recommended ? `${text} (recommended)` : text;
+}
 
-	return unique.length >= 2 ? unique : [];
+function questionBlock(question: AskedQuestion): ExtractedQuestion {
+	const choices = question.choices?.map((_, index) => choiceLabel(question, index)).join("\n");
+
+	return { question: [question.question, question.context, choices].filter(Boolean).join("\n\n") };
 }
 
 function formatAnswers(questions: ExtractedQuestion[], answers: string[]): string {
@@ -216,7 +222,7 @@ function formatAnswers(questions: ExtractedQuestion[], answers: string[]): strin
 }
 
 async function askWithDialogs(
-	questions: ExtractedQuestion[],
+	questions: AskedQuestion[],
 	ctx: ExtensionContext,
 	signal?: AbortSignal,
 ): Promise<string | null> {
@@ -225,25 +231,25 @@ async function askWithDialogs(
 	for (const question of questions) {
 		if (signal?.aborted) return null;
 		const title = question.context ? `${question.question}\n\n${question.context}` : question.question;
-		const choices = questionChoices(question.question);
 		let answer: string | undefined;
 
-		if (choices.length > 0) {
-			answer = await ctx.ui.select(title, [...choices.filter((choice) => choice !== OTHER_ANSWER), OTHER_ANSWER], {
-				signal,
-			});
+		if (question.choices) {
+			const labels = question.choices.map((_, index) => choiceLabel(question, index));
+			const selected = await ctx.ui.select(title, [...labels, OTHER_ANSWER], { signal });
+			const index = selected === undefined ? -1 : labels.indexOf(selected);
+			answer = index === -1 ? selected : choiceText(question, index);
 		}
 
-		if (choices.length === 0 || answer === OTHER_ANSWER) {
+		if (!question.choices || answer === OTHER_ANSWER) {
 			if (signal?.aborted) return null;
-			answer = await ctx.ui.input(title, "Type your answer", { signal });
+			answer = await ctx.ui.input(question.choices ? question.question : title, "Type your answer", { signal });
 		}
 
 		if (answer === undefined || signal?.aborted) return null;
 		answers.push(answer);
 	}
 
-	return formatAnswers(questions, answers);
+	return formatAnswers(questions.map(questionBlock), answers);
 }
 
 /**
@@ -544,16 +550,31 @@ export default function (pi: ExtensionAPI) {
 			name: "answer",
 			label: "Answer questions",
 			description:
-				"Collect the user's answers in an interactive Q&A screen. Use for each grilling question round. Supply complete question text, choices, and recommendations; write choices as Choices: A / B / C or numbered/lettered lines. The user's answers are returned directly. If cancelled, stop the interview until the user asks to resume.",
+				"Collect the user's answers in an interactive Q&A screen. Use for each grilling question round. Put each choice in choices, not in the question or context, and mark your recommended choice with recommended. The user can always type their own answer, so never add a catch-all choice such as 'Something else'. The user's answers are returned directly. If cancelled, stop the interview until the user asks to resume.",
 			exposure: "model-only",
 			parameters: Type.Object({
 				questions: Type.Array(
 					Type.Object({
 						question: Type.String({
 							minLength: 1,
-							description: "Complete question, including title, explanation, and choices.",
+							description: "The question itself, with its number, e.g. '6. Should every project be listed?'",
 						}),
-						context: Type.Optional(Type.String({ description: "Supporting context or your recommended answer." })),
+						context: Type.Optional(
+							Type.String({
+								description:
+									"Explanation the user needs to answer. Leave out the choices; for free-text questions, include your recommended answer here.",
+							}),
+						),
+						choices: Type.Optional(
+							Type.Array(Type.String({ minLength: 1 }), {
+								minItems: 2,
+								description:
+									"Choices without letter prefixes; the tool letters them A, B, C. Omit for free-text questions.",
+							}),
+						),
+						recommended: Type.Optional(
+							Type.Integer({ minimum: 0, description: "Zero-based index of your recommended choice." }),
+						),
 					}),
 					{ minItems: 1 },
 				),
@@ -561,6 +582,10 @@ export default function (pi: ExtensionAPI) {
 			async execute(_toolCallId, params, signal, _onUpdate, ctx) {
 				if (!ctx.hasUI) {
 					throw new Error("answer requires a UI; ask the questions in chat instead.");
+				}
+
+				if (params.questions.some((q) => q.recommended !== undefined && q.recommended >= (q.choices?.length ?? 0))) {
+					throw new Error("recommended must index into choices.");
 				}
 
 				if (signal?.aborted) {
@@ -584,7 +609,7 @@ export default function (pi: ExtensionAPI) {
 
 									if (signal?.aborted) done(null);
 
-									return new QnAComponent(params.questions, tui, done);
+									return new QnAComponent(params.questions.map(questionBlock), tui, done);
 								});
 				} finally {
 					if (abortHandler) signal?.removeEventListener("abort", abortHandler);

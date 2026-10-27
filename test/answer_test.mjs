@@ -17,34 +17,30 @@ function harness(ui, mode = "rpc") {
 	return (questions, signal) => tool.execute("test", { questions }, signal, undefined, { mode, hasUI: true, ui });
 }
 
-for (const choices of [
-	"Choices: red / blue",
-	"Choices: red, blue",
-	"Choices:\n- red\n- blue",
-	"1. red\n2. blue",
-	"A) red\nB) blue",
-	"(a) red\n(b) blue",
-]) {
-	test(`answer RPC select parses ${JSON.stringify(choices)}`, async () => {
-		const question = `Which color?\n${choices}`;
+test("answer RPC select letters structured choices and marks the recommendation", async () => {
+	const execute = harness({
+		async select(title, options) {
+			assert.equal(title, "1. Which color?\n\nChoose a color");
+			assert.deepEqual(options, ["A. red", "B. blue (recommended)", "Other (type an answer)"]);
 
-		const execute = harness({
-			async select(title, options) {
-				assert.equal(title, `${question}\n\nChoose a color`);
-				assert.deepEqual(options, ["red", "blue", "Other (type an answer)"]);
-
-				return "blue";
-			},
-		});
-
-		const result = await execute([{ question, context: "Choose a color" }]);
-		assert.deepEqual(result.details, {
-			cancelled: false,
-			answers: `Q: ${question}\n> Choose a color\nA: blue`,
-		});
-		assert.equal(result.content[0].text, `The user answered your questions:\n\n${result.details.answers}`);
+			return "B. blue (recommended)";
+		},
 	});
-}
+
+	const result = await execute([
+		{ question: "1. Which color?", context: "Choose a color", choices: ["red", "blue"], recommended: 1 },
+	]);
+
+	assert.deepEqual(result.details, {
+		cancelled: false,
+		answers: "Q: 1. Which color?\n\nChoose a color\n\nA. red\nB. blue (recommended)\nA: B. blue",
+	});
+	assert.equal(result.content[0].text, `The user answered your questions:\n\n${result.details.answers}`);
+});
+
+test("answer rejects a recommendation outside its choices", async () => {
+	await assert.rejects(harness({})([{ question: "Color?", choices: ["red", "blue"], recommended: 2 }]), /recommended/);
+});
 
 test("answer RPC supports Other and free-text questions in order", async () => {
 	const inputs = ["green", "Nate"];
@@ -54,19 +50,26 @@ test("answer RPC supports Other and free-text questions in order", async () => {
 			return "Other (type an answer)";
 		},
 		async input(title, placeholder) {
-			assert.ok(title);
+			assert.equal(title, inputs.length === 2 ? "Color?" : "Name?\n\nFirst name");
 			assert.equal(placeholder, "Type your answer");
 
 			return inputs.shift();
 		},
 	});
 
-	const result = await execute([{ question: "Color? Choices: red / blue" }, { question: "Name?" }]);
-	assert.equal(result.details.answers, "Q: Color? Choices: red / blue\nA: green\n\nQ: Name?\nA: Nate");
+	const result = await execute([
+		{ question: "Color?", context: "Pick one", choices: ["red", "blue"] },
+		{ question: "Name?", context: "First name" },
+	]);
+
+	assert.equal(
+		result.details.answers,
+		"Q: Color?\n\nPick one\n\nA. red\nB. blue\nA: green\n\nQ: Name?\n\nFirst name\nA: Nate",
+	);
 });
 
-for (const question of ["Color? Choices: red / blue", "Name?"]) {
-	test(`answer RPC cancellation stops the round: ${question}`, async () => {
+for (const question of [{ question: "Color?", choices: ["red", "blue"] }, { question: "Name?" }]) {
+	test(`answer RPC cancellation stops the round: ${question.question}`, async () => {
 		let calls = 0;
 
 		const cancel = async () => {
@@ -75,7 +78,7 @@ for (const question of ["Color? Choices: red / blue", "Name?"]) {
 			return undefined;
 		};
 
-		const result = await harness({ select: cancel, input: cancel })([{ question }, { question: "Never asked" }]);
+		const result = await harness({ select: cancel, input: cancel })([question, { question: "Never asked" }]);
 		assert.equal(calls, 1);
 		assert.equal(result.details.cancelled, true);
 		assert.equal(result.terminate, true);
@@ -90,9 +93,9 @@ test("answer passes cancellation signal to RPC dialogs", async () => {
 			assert.equal(options.signal, controller.signal);
 			controller.abort();
 
-			return "blue";
+			return "A. red";
 		},
-	})([{ question: "Color? Choices: red / blue" }], controller.signal);
+	})([{ question: "Color?", choices: ["red", "blue"] }], controller.signal);
 
 	assert.equal(result.details.cancelled, true);
 });

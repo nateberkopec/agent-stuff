@@ -30,7 +30,7 @@ test("unrestricted exposes built-in and configured providers", (t) => {
 	const a = agent(t, { "models.json": customProvider });
 	const providers = providersOf(a.listModels(undefined, { mode: "unrestricted" }));
 
-	for (const provider of ["anthropic", "custom", "fireworks", "openai", "openrouter"]) {
+	for (const provider of ["anthropic", "custom", "openai", "openrouter"]) {
 		assert.ok(providers.includes(provider), provider);
 	}
 });
@@ -99,7 +99,7 @@ test("a missing default model falls back to a model inside the profile", (t) => 
 	};
 
 	for (const [mode, host] of Object.entries(expected)) {
-		const a = agent(t, { "settings.json": { defaultProvider: "fireworks", defaultModel: "missing-model" } });
+		const a = agent(t, { "settings.json": { defaultProvider: "xai", defaultModel: "missing-model" } });
 		const { output } = a.prompt([], { mode });
 		const fetches = a.fetches();
 

@@ -1,22 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-	agent,
-	eventually,
-	FIREWORKS_DOCS,
-	FIREWORKS_US,
-	json,
-	OPENROUTER_US,
-	storedModel,
-} from "./support/datasafe.mjs";
+import { agent, eventually, json, OPENROUTER_US, storedModel } from "./support/datasafe.mjs";
 
 const HAIKU = "anthropic/claude-haiku-4.5";
 
 const GEMINI = "google/gemini-2.5-pro";
-
-const KIMI = "accounts/fireworks/routers/kimi-k3-us";
-
-const MUSE = "accounts/fireworks/models/muse-spark-open";
 
 const OFFLINE_SESSION = [[], { providers: [] }];
 
@@ -24,43 +12,6 @@ const only = (provider, ids) =>
 	ids.filter((id) => id.startsWith(`${provider}/`)).map((id) => id.slice(provider.length + 1));
 
 const storedIds = (a, provider) => a.stored()[provider].models.map(({ id }) => id);
-
-const docs = (rows) =>
-	[
-		"# US-only Serverless",
-		"",
-		"## Available models",
-		"",
-		"| Model | `model` ID |",
-		"| --- | --- |",
-		...rows.map(([name, id]) => `| ${name} | \`${id}\` |`),
-		"",
-		"## How to use it",
-	].join("\n");
-
-const apiModel = (id, overrides = {}) => ({
-	id,
-	context_length: 200_000,
-	supports_chat: true,
-	supports_image_input: false,
-	...overrides,
-});
-
-const fireworksRoutes = (rows, apiModels) => ({
-	[FIREWORKS_DOCS]: { body: docs(rows) },
-	[`${FIREWORKS_US}/models`]: json({ data: apiModels }),
-});
-
-const documented = [
-	["Kimi K3", KIMI],
-	["Muse Spark Open", MUSE],
-];
-
-const metadata = [
-	apiModel("accounts/fireworks/models/kimi-k3", { supports_image_input: true }),
-	apiModel(MUSE, { context_length: 100_000 }),
-	apiModel("accounts/fireworks/models/not-in-docs"),
-];
 
 test("OpenRouter starts closed without a catalog and restores only US-endpoint caches", (t) => {
 	const cold = agent(t);
@@ -146,118 +97,20 @@ test("OpenRouter discovery failures keep the cached catalog", async (t) => {
 	}
 });
 
-test("Fireworks restores only cached US-only models at the US endpoint", (t) => {
-	const a = agent(t, {
-		"models-store.json": {
-			fireworks: {
-				models: [
-					storedModel("fireworks", "accounts/fireworks/models/kimi-k3"),
-					storedModel("fireworks", MUSE, { baseUrl: "https://api.fireworks.ai/inference/v1" }),
-					storedModel("fireworks", KIMI),
-				],
-				checkedAt: 1,
-			},
-		},
-	});
-
-	assert.deepEqual(only("fireworks", a.listModels("fireworks")), [KIMI]);
-});
-
-test("Fireworks discovery publishes the documented US-only table joined with API metadata", async (t) => {
-	const a = agent(t, { "harness-routes.json": fireworksRoutes(documented, metadata) });
-	const session = a.rpc(...OFFLINE_SESSION);
-
-	assert.deepEqual(await a.refresh(session, "fireworks"), []);
-	assert.deepEqual(only("fireworks", await session.models()), [KIMI, MUSE]);
-
-	const [kimi, muse] = a.stored().fireworks.models;
-
-	assert.deepEqual(kimi.input, ["text", "image"]);
-	assert.equal(kimi.maxTokens, 131_072);
-	assert.deepEqual(muse.input, ["text"]);
-	assert.equal(muse.contextWindow, 100_000);
-	assert.equal(muse.maxTokens, 100_000);
-
-	a.write("harness-routes.json", fireworksRoutes(documented, [metadata[0], { ...metadata[1], supports_chat: false }]));
-
-	assert.deepEqual(await a.refresh(session, "fireworks --force"), []);
-	assert.deepEqual(only("fireworks", await session.models()), [KIMI]);
-});
-
-test("Fireworks discovery refuses unsafe or incomplete catalogs and keeps the cached one", async (t) => {
-	const store = { fireworks: { models: [storedModel("fireworks", KIMI)], checkedAt: 0 } };
-	const a = agent(t, { "models-store.json": store });
-	const session = a.rpc(...OFFLINE_SESSION);
-	const unsafe = (id) => fireworksRoutes([documented[0], ["Unsafe", id]], metadata);
-
-	const failures = [
-		[unsafe("accounts/other/models/not-us"), /unsafe model ID/],
-		[unsafe("accounts/fireworks/models/kimi-k3"), /unsafe model ID/],
-		[unsafe("accounts/fireworks/routers/muse-spark-open"), /unsafe model ID/],
-		[fireworksRoutes([documented[0], documented[0]], metadata), /duplicate model IDs/],
-		[fireworksRoutes([], metadata), /empty or malformed/],
-		[{ ...fireworksRoutes(documented, metadata), [FIREWORKS_DOCS]: { body: "# Moved" } }, /no Available models/],
-		[
-			{ ...fireworksRoutes(documented, metadata), [FIREWORKS_DOCS]: { status: 500 } },
-			/documentation returned HTTP 500/,
-		],
-		[fireworksRoutes(documented, [metadata[0]]), /no usable chat metadata for US-only model: .*muse-spark-open/],
-		[fireworksRoutes(documented, [metadata[0], { ...metadata[1], context_length: 0 }]), /muse-spark-open/],
-		[fireworksRoutes(documented, [metadata[0], { ...metadata[1], supports_chat: "false" }]), /malformed catalog/],
-		[
-			fireworksRoutes(
-				documented,
-				metadata.map((model) => ({ ...model, supports_chat: false })),
-			),
-			/no usable chat models/,
-		],
-	];
-
-	for (const [routes, error] of failures) {
-		a.write("harness-routes.json", routes);
-		const [message] = await a.refresh(session, "fireworks --force");
-
-		assert.match(message, error);
-		assert.deepEqual(only("fireworks", await session.models()), [KIMI]);
-		assert.deepEqual(a.stored(), store);
-	}
-});
-
-test("Fireworks discovery honors the one-hour cache", async (t) => {
-	const cached = (checkedAt) => ({ fireworks: { models: [storedModel("fireworks", KIMI)], checkedAt } });
-
-	const a = agent(t, {
-		"models-store.json": cached(Date.now()),
-		"harness-routes.json": fireworksRoutes(documented, metadata),
-	});
-
-	const session = a.rpc(...OFFLINE_SESSION);
-
-	assert.deepEqual(await a.refresh(session, "fireworks"), []);
-	assert.deepEqual(a.fetches(), []);
-
-	a.write("models-store.json", cached(0));
-
-	assert.deepEqual(await a.refresh(session, "fireworks"), []);
-	assert.deepEqual(only("fireworks", await session.models()), [KIMI, MUSE]);
-});
-
 test("subagent launches see catalog changes persisted by other Pi processes", async (t) => {
-	const catalog = (fireworks, openrouter, checkedAt) => ({
-		fireworks: { models: [storedModel("fireworks", fireworks)], checkedAt },
+	const catalog = (openrouter, checkedAt) => ({
 		openrouter: { models: [storedModel("openrouter", openrouter)], checkedAt },
 	});
 
-	const old = "accounts/fireworks/routers/old-us";
-	const a = agent(t, { "models-store.json": catalog(old, HAIKU, 1) });
+	const a = agent(t, { "models-store.json": catalog(HAIKU, 1) });
 	const session = a.rpc(["--provider", "meridian", "--model", "claude-harness"], { providers: ["meridian"] });
 
-	assert.ok((await session.models()).includes(`fireworks/${old}`));
-	a.write("models-store.json", catalog(KIMI, GEMINI, 2));
-	assert.ok((await session.models()).includes(`fireworks/${old}`), "the running registry is stale before launch");
+	assert.ok((await session.models()).includes(`openrouter/${HAIKU}`));
+	a.write("models-store.json", catalog(GEMINI, 2));
+	assert.ok((await session.models()).includes(`openrouter/${HAIKU}`), "the running registry is stale before launch");
 
 	await session.prompt("launch a subagent");
 	const { models } = a.log().find(({ type }) => type === "subagent");
 
-	assert.deepEqual([...only("fireworks", models), ...only("openrouter", models)], [KIMI, GEMINI]);
+	assert.deepEqual(only("openrouter", models), [GEMINI]);
 });

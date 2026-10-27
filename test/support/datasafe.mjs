@@ -13,7 +13,6 @@ const FAKE_KEYS = {
 	ANTHROPIC_API_KEY: "fake",
 	OPENAI_API_KEY: "fake",
 	OPENROUTER_API_KEY: "fake",
-	FIREWORKS_API_KEY: "fake",
 	AI_GATEWAY_API_KEY: "fake",
 };
 
@@ -25,10 +24,6 @@ const AMBIENT_ENV = Object.fromEntries(
 
 export const OPENROUTER_US = "https://us.openrouter.ai/api/v1";
 
-export const FIREWORKS_US = "https://us.api.fireworks.ai/inference/v1";
-
-export const FIREWORKS_DOCS = "https://docs.fireworks.ai/serverless/us-only-serverless.md";
-
 export function storedModel(provider, id, overrides = {}) {
 	const base = {
 		openrouter: {
@@ -37,7 +32,6 @@ export function storedModel(provider, id, overrides = {}) {
 			reasoning: false,
 			maxTokens: 8192,
 		},
-		fireworks: { api: "openai-completions", baseUrl: FIREWORKS_US, reasoning: true, maxTokens: 131_072 },
 	}[provider];
 
 	return {

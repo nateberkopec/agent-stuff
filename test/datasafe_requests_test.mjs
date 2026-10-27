@@ -2,14 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { agent, storedModel } from "./support/datasafe.mjs";
 
-const KIMI = "accounts/fireworks/routers/kimi-k3-us";
-
 const HAIKU = "anthropic/claude-haiku-4.5";
 
 const catalogs = () => ({
 	"models-store.json": {
 		openrouter: { models: [storedModel("openrouter", HAIKU)], checkedAt: Date.now() },
-		fireworks: { models: [storedModel("fireworks", KIMI)], checkedAt: Date.now() },
 	},
 });
 
@@ -43,21 +40,8 @@ test("Vercel requests pin US inference and disallow prompt training without drop
 	});
 });
 
-test("Fireworks requests reach only the US endpoint with the selected catalog model", (t) => {
-	const { request } = send(t, "fireworks", KIMI);
-
-	assert.equal(request.url, "https://us.api.fireworks.ai/inference/v1/chat/completions");
-	assert.equal(request.body.model, KIMI);
-
-	const substituted = send(t, "fireworks", KIMI, { payload: { model: "accounts/fireworks/models/kimi-k3" } });
-
-	assert.match(substituted.output, /Datasafe blocked a fireworks payload that does not target/);
-	assert.deepEqual(substituted.fetches, []);
-});
-
 test("models.json endpoint overrides cannot redirect allowed providers", (t) => {
 	const cases = [
-		["usa-no-train", "fireworks", KIMI],
 		["usa-no-train", "openrouter", HAIKU],
 		["usa-no-train", "vercel-ai-gateway", HAIKU],
 		["usa-no-train", "openai", "gpt-4o-mini"],

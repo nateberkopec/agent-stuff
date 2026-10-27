@@ -5,17 +5,13 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { createFireworksUSProvider } from "./fireworks.ts";
 import { pinEndpoints, type Policy } from "./guard.ts";
 import { createOpenRouterUSProvider } from "./openrouter.ts";
 import { resolveProfile } from "./profiles.ts";
 import { vercelUSPolicy } from "./vercel.ts";
 import { vertexUSPolicy } from "./vertex.ts";
 
-const regionalCatalogs = new Map<string, (raw: Provider) => Provider>([
-	["fireworks", createFireworksUSProvider],
-	["openrouter", createOpenRouterUSProvider],
-]);
+const regionalCatalogs = new Map<string, (raw: Provider) => Provider>([["openrouter", createOpenRouterUSProvider]]);
 
 const policies = new Map<string, Policy>([
 	["google-vertex", vertexUSPolicy],

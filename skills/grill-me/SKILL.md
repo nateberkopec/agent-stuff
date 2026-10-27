@@ -8,4 +8,4 @@ source: https://github.com/mattpocock/skills/blob/885e2ca4d842d139e9aef4e48d366c
 
 Read the `grilling` skill and follow its interview process.
 
-Collect each question round with the `answer` tool. Supply each complete question, its choices, and your recommended answer. Use the returned answers to advance the design tree and call `answer` again for the next round. When the user cancels, stop until they ask to resume. If the tool is unavailable, present the round in chat and wait for the user's reply.
+Collect each question round with the `answer` tool. Give each question its number and title in `question`, its explanation in `context`, its options in `choices`, and the index of your recommended option in `recommended`. Use the returned answers to advance the design tree and call `answer` again for the next round. When the user cancels, stop until they ask to resume. If the tool is unavailable, present the round in chat and wait for the user's reply.

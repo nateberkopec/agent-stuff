@@ -38,7 +38,6 @@
 			"./extensions/fast-mode/index.ts",
 			"./extensions/find_timeout.ts",
 			"./extensions/goal.ts",
-			"./extensions/herdr-status/index.ts",
 			"./extensions/notify.ts",
 			"./extensions/openai-guidance/index.ts",
 			"./extensions/toksec/index.ts"

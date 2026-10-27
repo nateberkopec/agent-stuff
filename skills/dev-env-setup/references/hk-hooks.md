@@ -10,17 +10,19 @@ Key rules:
 - **Steps should invoke mise tasks.** Use `mise run <task>` as the check command.
 - **Project definitions win.** User and project hooks merge additively; use the shared `lint` and `test` names when overriding defaults to avoid duplicate runs.
 - **Use local overrides for personal exceptions.** Put `hk.local.pkl` next to `hk.pkl`, begin it with `amends "./hk.pkl"`, and exclude it with `.git/info/exclude` or `.gitignore`.
+- **Match the schema to the hk that runs it.** Every `hk.pkl` amends a versioned `Config.pkl` package; there is no unversioned form. hk 2 cannot evaluate an hk 1 schema (`union property 'command' has no selected default`), so a project whose mise resolves `hk = "latest"` breaks when hk changes major. Never copy a version from this file. Take it from the hk the project resolves, and regenerate the line after a major upgrade. A schema matching the executable exactly is built in and needs no download.
 
-Minimal `hk.pkl` for projects using the standard tasks:
+Minimal `hk.pkl` for projects using the standard tasks, written from the resolved hk version:
 
-```pkl
-amends "package://github.com/jdx/hk/releases/download/v1.57.0/hk@1.57.0#/Config.pkl"
+```bash
+v=$(mise exec -- hk --version | cut -d' ' -f2)
+printf 'amends "package://github.com/jdx/hk/releases/download/v%s/hk@%s#/Config.pkl"\n' "$v" "$v" > hk.pkl
 ```
 
-A project with additional checks can redefine the shared names and reuse one mapping across hooks:
+A project with additional checks can redefine the shared names and reuse one mapping across hooks. Start from that same generated line:
 
 ```pkl
-amends "package://github.com/jdx/hk/releases/download/v1.57.0/hk@1.57.0#/Config.pkl"
+amends "package://github.com/jdx/hk/releases/download/v<version>/hk@<version>#/Config.pkl"
 
 local checks = new Mapping<String, Step> {
   ["lint"] {

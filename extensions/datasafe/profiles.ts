@@ -11,7 +11,6 @@ const usaNoTrain: Profile = {
 
 const profiles = new Map<string, Profile>([
 	[usaNoTrain.name, usaNoTrain],
-	["claude-only", { name: "claude-only", providers: ["meridian", "anthropic"], status: "[PROFILE: CLAUDE-ONLY]" }],
 	["unrestricted", { name: "unrestricted", providers: "all", status: "[WARNING: UNRESTRICTED]" }],
 ]);
 

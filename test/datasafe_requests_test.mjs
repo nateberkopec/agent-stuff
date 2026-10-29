@@ -42,19 +42,18 @@ test("Vercel requests pin US inference and disallow prompt training without drop
 
 test("models.json endpoint overrides cannot redirect allowed providers", (t) => {
 	const cases = [
-		["usa-no-train", "openrouter", HAIKU],
-		["usa-no-train", "vercel-ai-gateway", HAIKU],
-		["usa-no-train", "openai", "gpt-4o-mini"],
-		["claude-only", "anthropic", "claude-sonnet-4-6"],
+		["openrouter", HAIKU],
+		["vercel-ai-gateway", HAIKU],
+		["openai", "gpt-4o-mini"],
 	];
 
-	for (const [mode, provider, model] of cases) {
+	for (const [provider, model] of cases) {
 		const a = agent(t, {
 			...catalogs(),
 			"models.json": { providers: { [provider]: { baseUrl: "https://evil.example/v1" } } },
 		});
 
-		const { output } = a.prompt(["--provider", provider, "--model", model], { mode });
+		const { output } = a.prompt(["--provider", provider, "--model", model]);
 
 		assert.match(output, new RegExp(`Datasafe blocked ${provider} model or endpoint`), provider);
 		assert.deepEqual(a.fetches(), [], provider);

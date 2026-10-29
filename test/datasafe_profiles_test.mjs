@@ -73,28 +73,9 @@ test("an unknown profile fails closed to usa-no-train", (t) => {
 	assert.deepEqual(providersOf(a.listModels(undefined, { mode: "not-a-profile" })), ["openai", "vercel-ai-gateway"]);
 });
 
-test("claude-only allows first-party Anthropic and Meridian only", (t) => {
-	const a = agent(t);
-	const options = { mode: "claude-only", providers: ["meridian"] };
-
-	assert.deepEqual(providersOf(a.listModels(undefined, options)), ["anthropic", "meridian"]);
-	assert.match(
-		a.prompt(["--provider", "openai", "--model", "gpt-4o-mini"], options).output,
-		/Unknown provider "openai"/,
-	);
-	assert.deepEqual(a.fetches(), []);
-
-	a.prompt(["--provider", "anthropic", "--model", "claude-sonnet-4-6"], options);
-	const [request] = a.fetches();
-
-	assert.match(request.url, /^https:\/\/api\.anthropic\.com\/v1\/messages/);
-	assert.equal(JSON.parse(request.body).model, "claude-sonnet-4-6");
-});
-
 test("a missing default model falls back to a model inside the profile", (t) => {
 	const expected = {
 		"usa-no-train": /^https:\/\/(api\.openai\.com|ai-gateway\.vercel\.sh)\//,
-		"claude-only": /^https:\/\/api\.anthropic\.com\//,
 		unrestricted: /^https:\/\//,
 	};
 

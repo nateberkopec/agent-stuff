@@ -25,6 +25,9 @@
 		"@earendil-works/pi-tui": "*",
 		"typebox": "*"
 	},
+	"pi-subagents": {
+		"agents": ["./agents"]
+	},
 	"pi": {
 		"extensions": [
 			"./extensions/answer.ts",

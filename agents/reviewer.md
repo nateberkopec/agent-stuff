@@ -1,7 +1,8 @@
 ---
 name: reviewer
 description: Review code diffs, plans, proposed solutions, codebase health, and PRs using direct source and Git inspection
-tools: read, grep, find, ls, bash
+tools: read, grep, find, ls, bash, mcp
+async: true
 systemPromptMode: replace
 inheritProjectContext: true
 inheritSkills: false

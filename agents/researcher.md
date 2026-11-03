@@ -1,7 +1,7 @@
 ---
 name: researcher
 description: Autonomous web researcher — searches, evaluates, and synthesizes a focused research brief
-tools: read, write, mcp:server-1/skills, mcp:server-1/execute, mcp:server-1/resume
+tools: read, write, mcp, mcp:server-1/skills, mcp:server-1/execute, mcp:server-1/resume
 async: true
 thinking: medium
 systemPromptMode: replace

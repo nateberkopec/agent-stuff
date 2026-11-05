@@ -12,6 +12,12 @@ Upstream-derived material in:
   extensions/btw/overlay.ts
 License: extensions/MITSUHIKO-AGENT-STUFF-LICENSE.txt
 
+Armin Ronacher / earendil-works/pi-claude-code — MIT
+  vendor/pi-claude-code/
+Source: https://github.com/nateberkopec/pi-claude-code
+Revision: 601eca48ee92f3e1204c75db83a6ae2c0d644eb9
+License: vendor/pi-claude-code/LICENSE
+
 Anthropic skills — Apache-2.0
   skills/frontend-design/ — skills/frontend-design/LICENSE.txt
   skills/skill-creator/ — skills/skill-creator/LICENSE.txt

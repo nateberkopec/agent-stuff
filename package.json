@@ -13,6 +13,7 @@
 	},
 	"files": [
 		"extensions",
+		"vendor",
 		"skills",
 		"agents",
 		"LICENSE",
@@ -25,15 +26,13 @@
 		"@earendil-works/pi-tui": "*",
 		"typebox": "*"
 	},
-	"pi-subagents": {
-		"agents": ["./agents"]
-	},
 	"pi": {
 		"extensions": [
 			"./extensions/answer.ts",
 			"./extensions/btw/index.ts",
 			"./extensions/cache_hit_warning.ts",
 			"./extensions/caffeinate.ts",
+			"./extensions/claude-code.ts",
 			"./extensions/compact_at.ts",
 			"./extensions/conversation_title.ts",
 			"./extensions/datasafe/index.ts",
@@ -48,6 +47,11 @@
 		],
 		"skills": [
 			"./skills"
+		]
+	},
+	"pi-subagents": {
+		"agents": [
+			"./agents"
 		]
 	}
 }

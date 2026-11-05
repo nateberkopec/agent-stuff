@@ -22,6 +22,8 @@ started_at = time.time()
 deadline = time.monotonic() + duration
 format_string = '{"http":"%{http_code}","peer":"%{remote_ip}","dns":%{time_namelookup},"connect":%{time_connect},"tls":%{time_appconnect},"total":%{time_total}}'
 base = ["curl", "--disable", "--ipv4", "--http1.1", "--noproxy", "*", "--connect-timeout", "4", "--max-time", "6", "-sS", "-o", "/dev/null", "-w", format_string]
+if os.environ.get("PROBE_INTERFACE"):
+    base += ["--interface", os.environ["PROBE_INTERFACE"]]
 targets = [("anthropic-dns", "https://api.anthropic.com/", [])] * 2 + [("anthropic-pinned", "https://api.anthropic.com/", ["--resolve", "api.anthropic.com:443:160.79.104.10"])] * 2 + [("openai-control", "https://api.openai.com/v1/models", [])]
 records = []
 output_lock = threading.Lock()

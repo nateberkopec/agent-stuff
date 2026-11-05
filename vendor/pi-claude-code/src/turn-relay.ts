@@ -118,6 +118,7 @@ export class TurnRelay {
   status?: number;
   requestId?: string;
   failure?: string;
+  failureCode?: string;
   errorBody = Buffer.alloc(0);
   originalRequestBody?: Buffer;
   requestBody?: Buffer;
@@ -174,6 +175,7 @@ export class TurnRelay {
     this.status = undefined;
     this.requestId = undefined;
     this.failure = undefined;
+    this.failureCode = undefined;
     this.errorBody = Buffer.alloc(0);
     this.originalRequestBody = undefined;
     this.requestBody = undefined;
@@ -325,6 +327,7 @@ export class TurnRelay {
       response.end();
     } catch (error) {
       this.failure = error instanceof Error ? String(error) : "UnknownError";
+      this.failureCode = error instanceof Error && "code" in error && typeof error.code === "string" ? error.code : undefined;
       if (!response.headersSent) response.writeHead(this.cancelled ? 499 : 502).end();
       else response.destroy();
     } finally {

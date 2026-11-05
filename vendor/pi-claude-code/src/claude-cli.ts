@@ -1000,8 +1000,13 @@ class ClaudeProcess {
           if (this.relay.denied) detail += `, native retries denied ${this.relay.denied}`;
           const upstreamError = this.relay.errorText();
           if (upstreamError) detail += `, upstream said: ${upstreamError.slice(0, 500)}`;
-          if (this.relay.status === undefined && /\bETIMEDOUT\b/u.test(this.relay.failure ?? "")) {
-            throw new Error(`Claude Code upstream connection timed out (${detail})`);
+          if (this.relay.status === undefined) {
+            if (this.relay.failureCode === "ETIMEDOUT") {
+              throw new Error(`Claude Code upstream connection timed out (${detail})`);
+            }
+            if (["ECONNREFUSED", "ECONNRESET", "EHOSTUNREACH", "ENETUNREACH", "EPIPE"].includes(this.relay.failureCode ?? "")) {
+              throw new Error(`Claude Code upstream connection error (${detail})`);
+            }
           }
           // A dropped stream with no upstream error is a transport failure; this
           // wording is one Pi's retry classifier recognizes.

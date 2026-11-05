@@ -1,34 +1,35 @@
-name: Agent package checks
+name: Temporary Anthropic connection diagnostic
 
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
+    inputs:
+      start_at:
+        description: UTC epoch seconds for the paired probe start
+        required: true
+        type: string
+      seconds:
+        description: Probe duration in seconds
+        default: 180
+        type: number
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: anthropic-network-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-22.04, macos-latest]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+  network:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151
-        with:
-          cache: true
-          experimental: true
-      - run: mise run setup
-      - run: mise run lint
-      - run: mise run test
+      - name: Compare fresh IPv4 connections without API credentials
+        env:
+          PROBE_START_AT: ${{ inputs.start_at }}
+          PROBE_SECONDS: ${{ inputs.seconds }}
+          PROBE_VANTAGE: github-ubuntu
+        run: python3 tools/probe-anthropic-network.py

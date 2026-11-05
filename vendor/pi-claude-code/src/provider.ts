@@ -3,7 +3,7 @@ import { discoverClaudeModels, getClaudeStatus, LOGIN_HINT } from "./claude-cli.
 import { API_ID, CLAUDE_CODE_MODELS, modelFromDiscovery, PROVIDER_ID } from "./model-catalog.ts";
 import { streamClaudeCode } from "./stream.ts";
 
-const PROVIDER_ENV_NAMES = ["PI_CLAUDE_CODE_COMMAND", "PI_CLAUDE_CODE_CONFIG_DIR", "CLAUDE_CONFIG_DIR"] as const;
+const PROVIDER_ENV_NAMES = ["PI_CLAUDE_CODE_COMMAND", "PI_CLAUDE_CODE_CONFIG_DIR", "CLAUDE_CONFIG_DIR", "PI_CLAUDE_CODE_SESSION_PLAN"] as const;
 
 async function providerEnvironment(ctx: AuthContext): Promise<ProviderEnv | undefined> {
   const env: ProviderEnv = {};
@@ -47,6 +47,8 @@ export function createClaudeCodeProvider() {
         async check({ ctx, signal }) {
           const providerEnv = await providerEnvironment(ctx);
           lastProviderEnv = providerEnv;
+          const sessionPlan = providerEnv?.PI_CLAUDE_CODE_SESSION_PLAN;
+          if (sessionPlan) return { type: "oauth", source: `Claude Code ${sessionPlan} subscription` };
           const status = await getClaudeStatus(claudeCodeEnv(), signal);
           // Only report the provider as configured when Claude Code is
           // installed and logged in, so Pi hides its models otherwise.

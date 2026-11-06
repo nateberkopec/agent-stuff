@@ -11,12 +11,15 @@ import time
 
 vantage = os.environ.get("PROBE_VANTAGE", "local")
 duration = int(os.environ.get("PROBE_SECONDS", "180"))
+interval = float(os.environ.get("PROBE_INTERVAL", "1"))
 start_at = float(os.environ.get("PROBE_START_AT", "0")) or time.time()
 if not 1 <= duration <= 600:
     raise ValueError("PROBE_SECONDS must be between 1 and 600")
+if not 1 <= interval <= 60:
+    raise ValueError("PROBE_INTERVAL must be between 1 and 60 seconds")
 if time.time() - start_at > 30:
     raise RuntimeError("Scheduled start was missed; rerun both vantages together")
-print(json.dumps({"type": "scheduled", "vantage": vantage, "start_at": start_at, "seconds": duration}), flush=True)
+print(json.dumps({"type": "scheduled", "vantage": vantage, "start_at": start_at, "seconds": duration, "interval": interval}), flush=True)
 time.sleep(max(0, start_at - time.time()))
 started_at = time.time()
 deadline = time.monotonic() + duration
@@ -46,7 +49,7 @@ def lane(number, target, url, options):
         with output_lock:
             records.append(record)
             print(json.dumps(record), flush=True)
-        time.sleep(1)
+        time.sleep(interval)
 
 
 with concurrent.futures.ThreadPoolExecutor(max_workers=len(targets)) as pool:

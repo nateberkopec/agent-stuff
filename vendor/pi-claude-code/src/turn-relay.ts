@@ -110,6 +110,8 @@ const STRIPPED_REQUEST_HEADERS = new Set([
 ]);
 
 const STRIPPED_RESPONSE_HEADERS = new Set(["connection", "transfer-encoding", "server", "date"]);
+const upstreamHttpAgent = new http.Agent({ keepAlive: true, timeout: 60_000 });
+const upstreamHttpsAgent = new https.Agent({ keepAlive: true, timeout: 60_000 });
 
 export class TurnRelay {
   capture: AnthropicCapture;
@@ -290,6 +292,7 @@ export class TurnRelay {
         protocol: this.upstream.protocol,
         hostname: this.upstream.hostname,
         family: 4,
+        agent: this.upstream.protocol === "https:" ? upstreamHttpsAgent : upstreamHttpAgent,
         port: this.upstream.port || undefined,
         method: "POST",
         path: `${pathPrefix}/v1/messages${requestUrl.search}`,

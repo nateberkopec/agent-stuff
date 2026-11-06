@@ -6,7 +6,7 @@ export interface Profile {
 
 const usaNoTrain: Profile = {
 	name: "usa-no-train",
-	providers: ["openai", "meridian", "claude-code", "google-vertex", "openrouter", "vercel-ai-gateway"],
+	providers: ["openai", "claude-code", "google-vertex", "openrouter", "vercel-ai-gateway"],
 };
 
 const profiles = new Map<string, Profile>([

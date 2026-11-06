@@ -103,7 +103,7 @@ test("subagent launches see catalog changes persisted by other Pi processes", as
 	});
 
 	const a = agent(t, { "models-store.json": catalog(HAIKU, 1) });
-	const session = a.rpc(["--provider", "meridian", "--model", "claude-harness"], { providers: ["meridian"] });
+	const session = a.rpc(["--provider", "claude-code", "--model", "claude-harness"], { providers: ["claude-code"] });
 
 	assert.ok((await session.models()).includes(`openrouter/${HAIKU}`));
 	a.write("models-store.json", catalog(GEMINI, 2));

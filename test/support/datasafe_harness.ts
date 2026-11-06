@@ -68,8 +68,8 @@ function reply(model: Model<Api>, content: AssistantMessage["content"]): Assista
 	};
 }
 
-function registerScriptedMeridian(pi: ExtensionAPI) {
-	pi.registerProvider("meridian", {
+function registerScriptedClaude(pi: ExtensionAPI) {
+	pi.registerProvider("claude-code", {
 		api: "datasafe-harness",
 		apiKey: "fixture-not-a-secret",
 		baseUrl: "http://127.0.0.1:3456",
@@ -111,7 +111,7 @@ function registerScriptedMeridian(pi: ExtensionAPI) {
 export default async function harness(pi: ExtensionAPI) {
 	const extras = (process.env.DATASAFE_HARNESS_PROVIDERS ?? "").split(",");
 
-	if (extras.includes("meridian")) registerScriptedMeridian(pi);
+	if (extras.includes("claude-code")) registerScriptedClaude(pi);
 
 	if (extras.includes("foreign")) {
 		pi.registerProvider("foreign", {

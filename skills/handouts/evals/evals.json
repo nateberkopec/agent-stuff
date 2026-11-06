@@ -1,7 +1,7 @@
 {
   "skill_name": "handouts",
   "workflow_assertions": [
-    "For with-skill runs, model discovery and the launch record show that all authored handout text was delegated to the latest available meridian/claude-opus* model.",
+    "For with-skill runs, model discovery and the launch record show that all authored handout text was delegated to the latest available claude-code/claude-opus* model.",
     "For with-skill runs, prose, headings, sidenotes, captions, table labels, translations, and wording revisions originate from that writer; unchanged source pages are exempt."
   ],
   "evals": [

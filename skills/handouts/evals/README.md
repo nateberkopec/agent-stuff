@@ -12,7 +12,7 @@ Three fixed-input cases: a research reading handout, a flight comparison, and a 
 
 For with-skill runs, allow the handout agent to delegate to its required Opus writer. The iteration-1 harness prohibited all subagents; do not reuse that restriction for the revised skill. Keep the source inputs and task prompts identical across configurations, but allow the skill's workflow to differ from the baseline.
 
-Record the model-discovery result, selected exact provider/model ID, writer launch, and writer text artifact. Check `workflow_assertions` in `evals.json` separately from PDF-content grades; these requirements apply only to with-skill runs, not to an unconstrained baseline. If the latest available `meridian/claude-opus*` cannot be discovered or launched, record a blocked run rather than substituting a model. Cross-provider tests vary the parent/layout model while holding the required writing route constant; record both models.
+Record the model-discovery result, selected exact provider/model ID, writer launch, and writer text artifact. Check `workflow_assertions` in `evals.json` separately from PDF-content grades; these requirements apply only to with-skill runs, not to an unconstrained baseline. If the latest available `claude-code/claude-opus*` cannot be discovered or launched, record a blocked run rather than substituting a model. Cross-provider tests vary the parent/layout model while holding the required writing route constant; record both models.
 
 ## What counts as good
 

@@ -88,14 +88,13 @@ test("routes title calls through the provider registry with a separate session i
 	await settle(
 		{ stopReason: "stop", content: [{ type: "text", text: "Fix notifications" }] },
 		{
-			"x-meridian-agent": "pi",
 			"x-session-affinity": "parent",
-			"x-meridian-profile": "work",
+			"x-profile": "work",
 		},
 	);
 	assert.equal(requestOptions.sessionId, "test-session");
 	assert.equal(requestOptions.headers["x-session-affinity"], "parent");
-	assert.equal(requestOptions.headers["x-meridian-profile"], "work");
+	assert.equal(requestOptions.headers["x-profile"], "work");
 });
 
 test("logs returned API errors instead of silently discarding them", async () => {

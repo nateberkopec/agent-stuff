@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import compactAt, { parseCap } from "../extensions/compact_at.ts";
 
-const MILLION = { provider: "meridian", id: "claude-opus-5", contextWindow: 1_000_000, maxTokens: 128_000 };
+const MILLION = { provider: "claude-code", id: "claude-opus-5", contextWindow: 1_000_000, maxTokens: 128_000 };
 
 const CODEX = { provider: "openai", id: "gpt-6-astra", contextWindow: 272_000, maxTokens: 128_000 };
 

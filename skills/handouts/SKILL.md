@@ -9,7 +9,7 @@ Make a document the reader can comfortably read, compare, annotate, or use besid
 
 ## Writing
 
-Delegate all authored handout text to a subagent using the latest available Opus model from the `meridian` provider (`meridian/claude-opus*`; the registry uses the `claude-` prefix). Discover available models at runtime and choose the newest Opus version, rather than pinning a version or substituting another provider. If that model or delegation is unavailable, stop and ask the user; do not silently write the text yourself.
+Delegate all authored handout text to a subagent using the latest available Opus model from the `claude-code` provider (`claude-code/claude-opus*`). Discover available models at runtime and choose the newest Opus version, rather than pinning a version or substituting another provider. If that model or delegation is unavailable, stop and ask the user; do not silently write the text yourself.
 
 Give the writer the source material, task constraints, and composition guidance below. Its remit includes prose, headings, sidenotes, captions, table labels, and translations. Keep unchanged source pages intact. The parent owns layout, graphics, PDF production, and validation; send needed wording changes back to the writer rather than rewriting its copy during typesetting.
 

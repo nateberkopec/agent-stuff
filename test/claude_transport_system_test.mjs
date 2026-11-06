@@ -7,6 +7,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+import { setTimeout } from "node:timers/promises";
 import "./support/pi_tui_loader.mjs";
 
 const { createJiti } = createRequire(import.meta.resolve("@earendil-works/pi-coding-agent"))("jiti");
@@ -44,7 +45,7 @@ async function listen(server) {
 	return `http://127.0.0.1:${server.address().port}`;
 }
 
-async function runTurns(upstreamUrl) {
+async function runTurns(upstreamUrl, timeoutMs = 5000) {
 	const home = await mkdtemp(path.join(tmpdir(), "claude-transport-system-"));
 	const command = path.join(home, "claude.mjs");
 	await writeFile(command, cli);
@@ -65,7 +66,7 @@ async function runTurns(upstreamUrl) {
 						systemPrompt: "Reply with pong",
 						manifest: [],
 						extraBody: {},
-						timeoutMs: 5000,
+						timeoutMs,
 						upstreamUrl,
 						env: {
 							HOME: home,
@@ -141,3 +142,105 @@ for (const [status, message] of [
 		}
 	});
 }
+
+const stream = [
+	{
+		type: "message_start",
+		message: {
+			id: "msg_pool",
+			type: "message",
+			role: "assistant",
+			model: "fixture",
+			content: [],
+			stop_reason: null,
+			usage: { input_tokens: 1, output_tokens: 0 },
+		},
+	},
+	{ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+	{ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "pong" } },
+	{ type: "content_block_stop", index: 0 },
+	{ type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1 } },
+	{ type: "message_stop" },
+]
+	.map((event) => `data: ${JSON.stringify(event)}\n\n`)
+	.join("");
+
+for (const closeIdle of [false, true]) {
+	test(
+		closeIdle
+			? "a server-closed pooled socket is replaced without a transport retry"
+			: "separate Claude subprocesses reuse an upstream connection after an eight-second gap",
+		async () => {
+			const sockets = [];
+			let requests = 0;
+
+			const server = http.createServer((request, response) => {
+				requests++;
+				request.resume();
+				response.writeHead(200, { "content-type": "text/event-stream" });
+				response.end(stream);
+			});
+
+			server.keepAliveTimeout = 60_000;
+			server.on("connection", (socket) => sockets.push(socket));
+
+			try {
+				const upstream = await listen(server);
+				const first = await runTurns(upstream);
+				assert.equal(first.result.stopReason, "stop");
+				assert.equal(first.attempts, 1);
+
+				if (closeIdle) {
+					const closed = once(sockets[0], "close");
+					server.closeIdleConnections();
+					await closed;
+					await setTimeout(20);
+				} else {
+					await setTimeout(8000);
+				}
+
+				const second = await runTurns(upstream);
+				assert.equal(second.result.stopReason, "stop");
+				assert.equal(second.attempts, 1);
+				assert.deepEqual(second.retries, []);
+				assert.equal(requests, 2);
+				assert.equal(sockets.length, closeIdle ? 2 : 1);
+			} finally {
+				server.closeAllConnections();
+				await new Promise((resolve) => server.close(resolve));
+			}
+		},
+	);
+}
+
+test("a reused connection still obeys the individual Claude request timeout", async () => {
+	let requests = 0;
+	let connections = 0;
+
+	const server = http.createServer((request, response) => {
+		requests++;
+		request.resume();
+
+		if (requests === 1) {
+			response.writeHead(200, { "content-type": "text/event-stream" });
+			response.end(stream);
+		}
+	});
+
+	server.keepAliveTimeout = 60_000;
+	server.on("connection", () => connections++);
+
+	try {
+		const upstream = await listen(server);
+		const first = await runTurns(upstream);
+		assert.equal(first.result.stopReason, "stop");
+		const second = await runTurns(upstream, 2000);
+		assert.equal(second.attempts, 2);
+		assert.match(second.result.errorMessage, /timed out/);
+		assert.equal(requests, 3);
+		assert.equal(connections, 2);
+	} finally {
+		server.closeAllConnections();
+		await new Promise((resolve) => server.close(resolve));
+	}
+});

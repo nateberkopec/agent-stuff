@@ -106,12 +106,12 @@ class CaffeinateExtensionTest < Minitest::Test
       const assertions = () => {
         let out = "";
         try {
-          out = execFileSync("ps", ["-eo", "pid=,ppid=,args="], { encoding: "utf-8" });
+          out = execFileSync("ps", ["-eo", "pid=,ppid=,comm="], { encoding: "utf-8" });
         } catch { return []; }
         return out.split("\\n").map((line) => line.trim()).filter(Boolean)
           .filter((line) => {
             const [, parentPid, ...args] = line.split(/\\s+/);
-            return parentPid === String(process.pid) && args.join(" ").startsWith("caffeinate -i");
+            return parentPid === String(process.pid) && args.join(" ").split("/").at(-1) === "caffeinate";
           });
       };
       const waitFor = async (want, label, timeout = 5000) => {
@@ -128,7 +128,7 @@ class CaffeinateExtensionTest < Minitest::Test
       const spawned = await waitFor(true, "caffeinate -i was not spawned on agent_start");
       const pid = spawned[0].split(/\\s+/, 1)[0];
       const args = execFileSync("ps", ["-o", "args=", "-p", pid], { encoding: "utf-8" });
-      if (!args.includes("-t 300")) throw new Error("spawned assertion missing bounded timeout");
+      if (!args.includes("-i") || !args.includes("-t 300")) throw new Error("spawned assertion missing -i or bounded timeout");
 
       handlers.agent_settled[0]({}, ctx);
       await delay(100);

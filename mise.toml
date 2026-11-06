@@ -46,18 +46,18 @@ depends = ["lint:javascript", "lint:format", "lint:skills", "lint:secrets", "lin
 
 [tasks."test:javascript"]
 description = "Run JavaScript extension tests"
-sources = ["extensions/**", "test/**", "package.json", "development/package.json", "development/aube-lock.yaml"]
-run = "node --test test/*_test.mjs"
+sources = ["extensions/**", "vendor/**", "test/**", "tools/with-clean-git-env.sh", "package.json", "development/package.json", "development/aube-lock.yaml"]
+run = "bash tools/with-clean-git-env.sh node --test test/*_test.mjs"
 
 [tasks."test:ruby"]
 description = "Run existing Pi system and skill tests"
-sources = ["extensions/**", "skills/**", "test/**"]
-run = "ruby -Itest -e 'Dir.glob(\"test/**/*_test.rb\").sort.each { |file| require_relative file }'"
+sources = ["extensions/**", "skills/**", "test/**", "tools/with-clean-git-env.sh"]
+run = "bash tools/with-clean-git-env.sh ruby -Itest -e 'Dir.glob(\"test/**/*_test.rb\").sort.each { |file| require_relative file }'"
 
 [tasks."test:types"]
 description = "Type-check every extension"
-sources = ["extensions/**", "test/support/**", "tsconfig.json", "package.json", "development/package.json", "development/aube-lock.yaml"]
-run = "tsc --project tsconfig.json"
+sources = ["extensions/**", "vendor/**", "test/support/**", "tools/with-clean-git-env.sh", "tsconfig.json", "package.json", "development/package.json", "development/aube-lock.yaml"]
+run = "bash tools/with-clean-git-env.sh tsc --project tsconfig.json"
 
 [tasks.test]
 description = "Run the full existing test suite and type checks"

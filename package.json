@@ -36,6 +36,7 @@
 			"./extensions/compact_at.ts",
 			"./extensions/conversation_title.ts",
 			"./extensions/datasafe/index.ts",
+			"./extensions/daybreak/index.ts",
 			"./extensions/executor-watch/index.ts",
 			"./extensions/fast-mode/index.ts",
 			"./extensions/find_timeout.ts",

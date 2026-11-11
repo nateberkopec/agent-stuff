@@ -16,6 +16,7 @@ export interface DiscoveredClaudeModel {
   supportsAdaptiveThinking?: boolean;
   supportsFastMode?: boolean;
   supportsAutoMode?: boolean;
+  contextWindow?: number;
 }
 
 // Pi exposes providers/all to extensions, but not individual generated model files.
@@ -110,7 +111,7 @@ function fallbackModel(info: DiscoveredClaudeModel, id: string): ClaudeCodeModel
     ...(thinkingLevelMap ? { thinkingLevelMap } : {}),
     input: ["text", "image"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: /\b1M context\b/iu.test(info.description) ? 1_000_000 : 200_000,
+    contextWindow: info.contextWindow ?? (/\b1M context\b/iu.test(info.description) ? 1_000_000 : 200_000),
     maxTokens: 64_000,
   };
 }
@@ -133,11 +134,19 @@ function fromBuiltin(info: DiscoveredClaudeModel, id: string, builtin: Model<"an
   };
 }
 
+function builtinModel(info: DiscoveredClaudeModel): Model<"anthropic-messages"> | undefined {
+  const id = canonicalModelId(info);
+  return BUILTIN_ANTHROPIC_MODELS[id === "default" ? withoutContextSuffix(info.resolvedModel || "") : id];
+}
+
+export function hasBuiltinMetadata(info: DiscoveredClaudeModel): boolean {
+  return builtinModel(info) !== undefined;
+}
+
 /** Convert a Claude Code catalog row into Pi's built-in Anthropic naming and pricing. */
 export function modelFromDiscovery(info: DiscoveredClaudeModel): ClaudeCodeModel {
   const id = canonicalModelId(info);
-  const builtinId = id === "default" ? withoutContextSuffix(info.resolvedModel || "") : id;
-  const builtin = BUILTIN_ANTHROPIC_MODELS[builtinId];
+  const builtin = builtinModel(info);
   NATIVE_ROUTE_BY_ID.set(id, info.value);
   NATIVE_TOOL_CHANGES_BY_ID.set(id, builtin?.compat?.supportsMidConvoToolChanges === true);
   ADAPTIVE_THINKING_BY_ID.set(id, info.supportsAdaptiveThinking === true);

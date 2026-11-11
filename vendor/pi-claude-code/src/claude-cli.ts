@@ -10,7 +10,7 @@ import { registerSessionResourceCleanup } from "@earendil-works/pi-ai";
 import { TurnRelay } from "./turn-relay.ts";
 import { usageCreditsAllowed, usageCreditsChargeError, type RateLimitInfo } from "./billing.ts";
 import { envFlagEnabled } from "./env.ts";
-import type { DiscoveredClaudeModel } from "./model-catalog.ts";
+import { hasBuiltinMetadata, type DiscoveredClaudeModel } from "./model-catalog.ts";
 import type {
   AnthropicStreamEvent,
   NativeFrame,
@@ -39,6 +39,7 @@ export interface ClaudeStatus {
 
 export interface RunClaudeInput {
   model: string;
+  contextWindow?: number;
   /** Working directory exposed to Claude and used for Pi tool paths. */
   cwd?: string;
   frames: NativeFrame[];
@@ -273,35 +274,29 @@ export async function discoverClaudeModels(
     killProcessTree(child);
   }, timeoutMs);
 
-  const requestId = `pi-models-${Date.now()}`;
-  child.stdin?.write(
-    `${JSON.stringify({ type: "control_request", request_id: requestId, request: { subtype: "initialize" } })}\n`,
-  );
-  child.stdin?.end(
-    `${JSON.stringify({
-      type: "user",
-      message: { role: "user", content: [{ type: "text", text: "model-catalog-probe" }] },
-      shouldQuery: false,
-    })}\n`,
-  );
+  const responses = controlResponses(child);
+  let requestCount = 0;
+  const control = async (request: Record<string, unknown>) => {
+    const requestId = `pi-models-${requestCount++}`;
+    child.stdin?.write(`${JSON.stringify({ type: "control_request", request_id: requestId, request })}\n`);
+    for (;;) {
+      const { value: envelope, done } = await responses.next();
+      if (done) return undefined;
+      if (envelope.request_id !== requestId) continue;
+      return envelope.subtype === "success" ? (envelope.response as Record<string, unknown> | undefined) : undefined;
+    }
+  };
 
   let models: DiscoveredClaudeModel[] | undefined;
   try {
-    const reader = createInterface({ input: child.stdout!, crlfDelay: Infinity });
-    for await (const line of reader) {
-      if (!line.trim()) continue;
-      let event: Record<string, unknown>;
-      try {
-        event = JSON.parse(line) as Record<string, unknown>;
-      } catch {
-        continue;
-      }
-      if (event.type !== "control_response") continue;
-      const envelope = event.response as Record<string, unknown> | undefined;
-      if (envelope?.request_id !== requestId || envelope.subtype !== "success") continue;
-      const response = envelope.response as Record<string, unknown> | undefined;
-      if (Array.isArray(response?.models)) models = response.models.filter(isDiscoveredModel);
+    const initialized = await control({ subtype: "initialize" });
+    if (Array.isArray(initialized?.models)) models = initialized.models.filter(isDiscoveredModel);
+    for (const model of (models ?? []).filter((model) => !hasBuiltinMetadata(model))) {
+      await control({ subtype: "set_model", model: model.value });
+      const usage = await control({ subtype: "get_context_usage" });
+      if (typeof usage?.rawMaxTokens === "number" && usage.rawMaxTokens > 0) model.contextWindow = usage.rawMaxTokens;
     }
+    child.stdin?.end();
     const exitCode = await childExit(child);
     signal?.throwIfAborted();
     if (timedOut) throw new Error("Claude Code model discovery timed out");
@@ -315,6 +310,22 @@ export async function discoverClaudeModels(
     clearTimeout(timer);
     signal?.removeEventListener("abort", abort);
     if (child.exitCode === null) killProcessTree(child);
+  }
+}
+
+async function* controlResponses(child: ChildProcess): AsyncGenerator<Record<string, unknown>> {
+  const reader = createInterface({ input: child.stdout!, crlfDelay: Infinity });
+  for await (const line of reader) {
+    if (!line.trim()) continue;
+    let event: Record<string, unknown>;
+    try {
+      event = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (event.type !== "control_response") continue;
+    const envelope = event.response as Record<string, unknown> | undefined;
+    if (envelope) yield envelope;
   }
 }
 
@@ -727,6 +738,7 @@ function frameHistoryHash(frames: NativeFrame[]): string {
 function launchPlan(input: RunClaudeInput): ClaudeLaunchPlan {
   const timeoutMs = input.timeoutMs ?? 180_000;
   const env = processEnvironment(input.env, input.extraBody);
+  if (input.contextWindow) env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = String(input.contextWindow);
   return {
     env,
     timeoutMs,

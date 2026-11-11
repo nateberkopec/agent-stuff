@@ -226,6 +226,8 @@ export async function discoverClaudeModels(
 ): Promise<DiscoveredClaudeModel[]> {
   signal?.throwIfAborted();
   const env = processEnvironment(envInput, {});
+  delete env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC;
+  delete env.DISABLE_TELEMETRY;
   const command = await resolveClaudeExecutable(env);
   if (!command) throw new Error(INSTALL_HINT);
 

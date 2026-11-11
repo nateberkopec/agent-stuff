@@ -376,6 +376,7 @@ export function streamClaudeCode(
       stream.push({ type: "start", partial: output });
       const response = await runClaudeRequest({
         model: nativeModel(model.id),
+        contextWindow: model.contextWindow,
         cwd: process.cwd(),
         frames,
         systemPrompt: scrubPiPrompt(systemPrompt),

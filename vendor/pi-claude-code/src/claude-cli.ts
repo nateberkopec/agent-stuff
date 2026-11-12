@@ -152,15 +152,45 @@ async function captureProcess(
   }
 }
 
+const STATUS_TTL_MS = 60_000;
+const statusCache = new Map<string, { status: Promise<ClaudeStatus>; expires: number }>();
+
 export async function getClaudeStatus(
   envInput: Record<string, string | undefined> = process.env,
   signal?: AbortSignal,
 ): Promise<ClaudeStatus> {
+  signal?.throwIfAborted();
   const env = claudeEnvironment(envInput);
+  const key = JSON.stringify([configuredCommand(env), env.PATH, env.HOME, env.CLAUDE_CONFIG_DIR]);
+  const cached = statusCache.get(key);
+  if (cached && cached.expires > Date.now()) return abortable(cached.status, signal);
+
+  const status = readClaudeStatus(env);
+  statusCache.set(key, { status, expires: Number.POSITIVE_INFINITY });
+  status.then(
+    (result) => {
+      if (result.loggedIn) statusCache.set(key, { status, expires: Date.now() + STATUS_TTL_MS });
+      else statusCache.delete(key);
+    },
+    () => statusCache.delete(key),
+  );
+  return abortable(status, signal);
+}
+
+function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
+}
+
+async function readClaudeStatus(env: Record<string, string>): Promise<ClaudeStatus> {
   const command = await resolveClaudeExecutable(env);
   if (!command) return { available: false, loggedIn: false, subscription: false, detail: INSTALL_HINT };
   try {
-    const result = await captureProcess(command, ["auth", "status"], env, signal);
+    const result = await captureProcess(command, ["auth", "status"], env);
     const payload = result.stdout.trim().startsWith("{")
       ? (JSON.parse(result.stdout) as { loggedIn?: unknown; authMethod?: unknown; subscriptionType?: unknown })
       : {};
@@ -175,36 +205,18 @@ export async function getClaudeStatus(
       plan,
       detail: loggedIn ? undefined : LOGIN_HINT,
     };
-  } catch (error) {
-    if (signal?.aborted) throw error;
+  } catch {
     return { available: true, loggedIn: false, subscription: false, command, detail: LOGIN_HINT };
   }
 }
 
-const READY_STATUS_TTL_MS = 60_000;
-const readyStatusCache = new Map<string, { command: string; expires: number }>();
-
-/**
- * Resolve a logged-in Claude Code executable. Successful checks are cached
- * briefly because a fresh worker is spawned after every tool call, and an
- * extra `claude auth status` process on each of those turns adds latency.
- */
 async function readyClaudeCommand(
   envInput: Record<string, string | undefined>,
   signal?: AbortSignal,
 ): Promise<string> {
-  const env = claudeEnvironment(envInput);
-  const key = JSON.stringify([configuredCommand(env), env.PATH, env.HOME, env.CLAUDE_CONFIG_DIR]);
-  const cached = readyStatusCache.get(key);
-  if (cached && cached.expires > Date.now()) return cached.command;
-
-  const status = await getClaudeStatus(env, signal);
+  const status = await getClaudeStatus(envInput, signal);
   if (!status.available || !status.command) throw new Error(INSTALL_HINT);
-  if (!status.loggedIn) {
-    readyStatusCache.delete(key);
-    throw new Error(LOGIN_HINT);
-  }
-  readyStatusCache.set(key, { command: status.command, expires: Date.now() + READY_STATUS_TTL_MS });
+  if (!status.loggedIn) throw new Error(LOGIN_HINT);
   return status.command;
 }
 

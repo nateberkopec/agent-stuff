@@ -334,12 +334,16 @@ function spawnCommand(
   args: string[],
   options: Parameters<typeof spawn>[2],
 ): ChildProcess {
+  let child: ChildProcess;
   if (process.platform === "win32" && /\.(?:cmd|bat)$/iu.test(command)) {
     const comspec = options?.env?.COMSPEC || process.env.COMSPEC || "cmd.exe";
     const quote = (value: string) => `"${value.replace(/"/gu, '""')}"`;
-    return spawn(comspec, ["/d", "/s", "/c", [quote(command), ...args.map(quote)].join(" ")], options);
+    child = spawn(comspec, ["/d", "/s", "/c", [quote(command), ...args.map(quote)].join(" ")], options);
+  } else {
+    child = spawn(command, args, options);
   }
-  return spawn(command, args, options);
+  child.stdin?.on("error", () => {});
+  return child;
 }
 
 function childExit(child: ChildProcess): Promise<number> {

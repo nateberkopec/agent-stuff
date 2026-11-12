@@ -8,7 +8,10 @@ let requestOptions;
 
 registerHooks({
 	resolve(specifier, context, nextResolve) {
-		const source = specifier === "@earendil-works/pi-ai" ? 'export const uuidv7 = () => "test-session";' : undefined;
+		const source =
+			specifier === "@earendil-works/pi-ai" && context.parentURL?.endsWith("/extensions/conversation_title.ts")
+				? 'export const uuidv7 = () => "test-session";'
+				: undefined;
 
 		return source
 			? { url: `data:text/javascript,${encodeURIComponent(source)}`, shortCircuit: true }

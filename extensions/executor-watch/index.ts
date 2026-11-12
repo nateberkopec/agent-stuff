@@ -1,4 +1,4 @@
-import { setTimeout as delay } from "node:timers/promises";
+import timers from "node:timers/promises";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -64,7 +64,7 @@ export default function (pi: ExtensionAPI) {
 				held.push(value);
 				flush();
 			},
-			(signal) => delay(15000, undefined, { signal }),
+			(signal) => timers.setTimeout(15000, undefined, { signal }),
 		);
 	}
 

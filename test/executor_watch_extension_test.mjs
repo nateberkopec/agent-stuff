@@ -1,8 +1,5 @@
 import assert from "node:assert/strict";
-import { mock, test } from "node:test";
-
-// Enabled before import so the extension's poll delay and retry interval use fake time.
-mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+import { test } from "node:test";
 
 const { default: extension } = await import("../extensions/executor-watch/index.ts");
 
@@ -19,13 +16,14 @@ const requested = (request) => JSON.parse(request.args.code.match(/workflows\.ge
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
-async function advance(ms) {
+async function advance(t, ms) {
 	await tick();
-	mock.timers.tick(ms);
+	t.mock.timers.tick(ms);
 	await tick();
 }
 
-function harness(entries = []) {
+function harness(t, entries = []) {
+	t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
 	const events = new Map();
 	const messages = [];
 	const requests = [];
@@ -69,56 +67,56 @@ const attach = (h, run = "wfr_1") => h.tool.execute("call", { app: "app_1", run 
 
 const shutdown = (h) => h.events.get("session_shutdown")();
 
-test("attach polls server-1 in the background and wakes an idle session once", async () => {
-	const h = harness();
+test("attach polls server-1 in the background and wakes an idle session once", async (t) => {
+	const h = harness(t);
 	const result = await attach(h);
 	assert.ok(result.content[0].text.includes("Return control"));
 	assert.deepEqual(h.entries.at(-1).data.pending, [{ app: "app_1", run: "wfr_1" }]);
 	h.state.status = "complete";
-	await advance(15000);
+	await advance(t, 15000);
 	assert.equal(h.messages.length, 1);
 	assert.equal(h.messages[0].message.customType, "executor-watch-complete");
 	assert.deepEqual(h.messages[0].options, { triggerTurn: true, deliverAs: "followUp" });
 	assert.deepEqual(h.entries.at(-1).data.pending, []);
 	assert.ok(h.requests.every((request) => request.server === "server-1" && request.tool === "server-1_execute"));
 	assert.ok(h.requests.every((request) => request.args.code.includes(".workflows.get(")));
-	await advance(15000);
+	await advance(t, 15000);
 	assert.equal(h.messages.length, 1);
 	shutdown(h);
 });
 
-test("a terminal run returns its result without attaching", async () => {
-	const h = harness();
+test("a terminal run returns its result without attaching", async (t) => {
+	const h = harness(t);
 	h.state.status = "complete";
 	const result = await attach(h);
 	assert.ok(!result.content[0].text.includes("Return control"));
-	await advance(15000);
+	await advance(t, 15000);
 	assert.equal(h.requests.length, 1);
 	assert.equal(h.messages.length, 0);
 });
 
-test("completion waits while busy without an agent run, but follows up during one", async () => {
-	const h = harness();
+test("completion waits while busy without an agent run, but follows up during one", async (t) => {
+	const h = harness(t);
 	h.state.idle = false;
 	await attach(h);
 	h.state.status = "complete";
-	await advance(15000);
+	await advance(t, 15000);
 	assert.equal(h.messages.length, 0);
 	h.state.idle = true;
-	await advance(1000);
+	await advance(t, 1000);
 	assert.equal(h.messages.length, 1);
 	h.state.idle = false;
 	h.state.status = "running";
 	h.events.get("agent_start")();
 	await attach(h, "wfr_2");
 	h.state.status = "errored";
-	await advance(15000);
+	await advance(t, 15000);
 	assert.equal(h.messages.length, 2);
 	shutdown(h);
 });
 
-test("reload reattaches persisted runs automatically without starting replacements", async () => {
-	const h = harness([
+test("reload reattaches persisted runs automatically without starting replacements", async (t) => {
+	const h = harness(t, [
 		{ type: "custom", customType: "executor-watch-state", data: { pending: [{ app: "app_old", run: "wfr_old" }] } },
 	]);
 
@@ -129,15 +127,15 @@ test("reload reattaches persisted runs automatically without starting replacemen
 	shutdown(h);
 });
 
-test("switching sessions suppresses late completion from the previous owner", async () => {
-	const h = harness();
+test("switching sessions suppresses late completion from the previous owner", async (t) => {
+	const h = harness(t);
 	await attach(h);
 	let resolve;
 	h.respond = () =>
 		new Promise((r) => {
 			resolve = r;
 		});
-	await advance(15000);
+	await advance(t, 15000);
 	const stale = resolve;
 	shutdown(h);
 	h.events.get("session_start")({}, h.ctx);
@@ -147,12 +145,12 @@ test("switching sessions suppresses late completion from the previous owner", as
 	shutdown(h);
 });
 
-test("sustained tracking failure is reported and the run stays pending for reattach", async () => {
-	const h = harness();
+test("sustained tracking failure is reported and the run stays pending for reattach", async (t) => {
+	const h = harness(t);
 	await attach(h);
 	h.respond = () => Promise.resolve({ ok: false, error: new Error("MCP tool call failed: tool_not_found") });
 
-	for (let i = 0; i < 5; i++) await advance(15000);
+	for (let i = 0; i < 5; i++) await advance(t, 15000);
 	assert.equal(h.messages.length, 1);
 	assert.equal(h.messages[0].message.details.status, "tracking_error");
 	assert.match(h.messages[0].message.details.error, /tool_not_found/);

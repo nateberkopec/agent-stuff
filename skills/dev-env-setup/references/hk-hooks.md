@@ -2,11 +2,12 @@
 
 Git hooks are managed with [hk](https://hk.jdx.dev/). Configure them in `hk.pkl` at the project root.
 
-The managed user config at `~/.config/hk/config.pkl` supplies `lint` and `test` steps to both `pre-commit` and `check`, calling the standard `mise run lint` and `mise run test` tasks. A project opts in by adding an `hk.pkl`; redefine those step names only when the project needs more granular checks or different commands.
+The managed user config at `~/.config/hk/config.pkl` supplies `lint` and `test` steps to both `pre-push` and `check`, calling the standard `mise run lint` and `mise run test` tasks. A project opts in by adding an `hk.pkl` with a 10s pre-commit timeout; redefine those step names only when the project needs more granular checks or different commands.
 
 Key rules:
 - **Split hooks for parallelism.** hk runs steps in parallel, so separate independent checks rather than combining them into one script.
-- **Pre-commit and check must include lint and test.** Keep both entry points equivalent except for checks that inherently depend on staged state.
+- **Pre-commit finishes in 10s.** Set `timeout = "10s"` on the `pre-commit` hook. Keep only fast checks on staged files there; time each with `mise run --force <task>` and move anything that cannot fit to pre-push.
+- **Pre-push and check must include lint and test.** Give `pre-push` a `timeout` sized to the full suite with headroom. Tests too slow even for pre-push, such as system tests, run only in CI.
 - **Steps should invoke mise tasks.** Use `mise run <task>` as the check command.
 - **Project definitions win.** User and project hooks merge additively; use the shared `lint` and `test` names when overriding defaults to avoid duplicate runs.
 - **Use local overrides for personal exceptions.** Put `hk.local.pkl` next to `hk.pkl`, begin it with `amends "./hk.pkl"`, and exclude it with `.git/info/exclude` or `.gitignore`.
@@ -16,10 +17,10 @@ Minimal `hk.pkl` for projects using the standard tasks, written from the resolve
 
 ```bash
 v=$(mise exec -- hk --version | cut -d' ' -f2)
-printf 'amends "package://github.com/jdx/hk/releases/download/v%s/hk@%s#/Config.pkl"\n' "$v" "$v" > hk.pkl
+printf 'amends "package://github.com/jdx/hk/releases/download/v%s/hk@%s#/Config.pkl"\n\nhooks {\n  ["pre-commit"] {\n    timeout = "10s"\n  }\n}\n' "$v" "$v" > hk.pkl
 ```
 
-A project with additional checks can redefine the shared names and reuse one mapping across hooks. Start from that same generated line:
+A project with additional checks can redefine the shared names, reuse one mapping across pre-push and check, and keep fast staged-file checks in pre-commit. Start from that same generated line:
 
 ```pkl
 amends "package://github.com/jdx/hk/releases/download/v<version>/hk@<version>#/Config.pkl"
@@ -28,9 +29,6 @@ local checks = new Mapping<String, Step> {
   ["lint"] {
     check = "mise run lint:standard"
   }
-  ["complexity"] {
-    check = "mise run lint:complexity"
-  }
   ["test"] {
     check = "mise run test"
   }
@@ -38,6 +36,15 @@ local checks = new Mapping<String, Step> {
 
 hooks {
   ["pre-commit"] {
+    timeout = "10s"
+    steps {
+      ["complexity"] {
+        check = "mise run lint:complexity"
+      }
+    }
+  }
+  ["pre-push"] {
+    timeout = "5m"
     steps = checks
   }
   ["check"] {

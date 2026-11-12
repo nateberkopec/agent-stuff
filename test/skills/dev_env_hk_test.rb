@@ -7,7 +7,7 @@ require "tmpdir"
 class DevEnvHkTest < Minitest::Test
   CHECK = File.expand_path("../../skills/dev-env-setup/scripts/check-dev-env.fish", __dir__)
   GLOBAL_CONFIG = File.expand_path("../fixtures/global-hk.pkl", __dir__)
-  SCHEMA = 'amends "package://github.com/jdx/hk/releases/download/v2.0.1/hk@2.0.1#/Config.pkl"'
+  SCHEMA = 'amends "package://github.com/jdx/hk/releases/download/v2.11.1/hk@2.11.1#/Config.pkl"'
 
   def setup
     skip "fish and hk are required for checker tests" unless commands_available?
@@ -16,9 +16,9 @@ class DevEnvHkTest < Minitest::Test
   def test_minimal_project_inherits_global_lint_and_test_steps
     output = run_checker(SCHEMA, global_config: File.read(GLOBAL_CONFIG))
 
-    assert_report output, "PASS", "pre-commit: lint step"
-    assert_report output, "PASS", "pre-commit: test step"
-    refute_includes output, "pre-commit: complexity step"
+    assert_report output, "PASS", "pre-push: lint step"
+    assert_report output, "PASS", "pre-push: test step"
+    assert_report output, "FAIL", "pre-commit: timeout"
   end
 
   def test_project_overrides_global_steps_and_adds_granular_checks
@@ -27,9 +27,14 @@ class DevEnvHkTest < Minitest::Test
 
       hooks {
         ["pre-commit"] {
+          timeout = "10s"
+          steps {
+            ["complexity"] { check = "mise run lint:complexity" }
+          }
+        }
+        ["pre-push"] {
           steps {
             ["lint"] { check = "mise run lint:standard" }
-            ["complexity"] { check = "mise run lint:complexity" }
             ["test"] { check = "mise run test" }
           }
         }
@@ -38,15 +43,16 @@ class DevEnvHkTest < Minitest::Test
 
     output = run_checker(project_config, global_config: File.read(GLOBAL_CONFIG))
 
-    assert_report output, "PASS", "pre-commit: lint step"
-    assert_report output, "PASS", "pre-commit: test step"
+    assert_report output, "PASS", "pre-push: lint step"
+    assert_report output, "PASS", "pre-push: test step"
+    assert_report output, "PASS", "pre-commit: timeout (10s)"
   end
 
   def test_reports_project_overrides_that_remove_required_steps
     global_config = File.read(GLOBAL_CONFIG)
 
-    assert_report run_checker(config_with_empty_step("lint"), global_config: global_config), "FAIL", "pre-commit: lint step"
-    assert_report run_checker(config_with_empty_step("test"), global_config: global_config), "FAIL", "pre-commit: test step"
+    assert_report run_checker(config_with_empty_step("lint"), global_config: global_config), "FAIL", "pre-push: lint step"
+    assert_report run_checker(config_with_empty_step("test"), global_config: global_config), "FAIL", "pre-push: test step"
   end
 
   private
@@ -61,7 +67,7 @@ class DevEnvHkTest < Minitest::Test
       #{SCHEMA}
 
       hooks {
-        ["pre-commit"] {
+        ["pre-push"] {
           steps {
             ["#{name}"] {}
           }
@@ -80,6 +86,7 @@ class DevEnvHkTest < Minitest::Test
       File.write(File.join(config_dir, "config.pkl"), global_config)
       system("git", "-C", project_dir, "init", "--quiet")
       system("git", "-C", project_dir, "add", "Gemfile", "hk.pkl")
+      system({"HK" => "0"}, "git", "-C", project_dir, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "init")
 
       env = {
         "GIT_CONFIG_GLOBAL" => File::NULL,

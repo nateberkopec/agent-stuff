@@ -6,8 +6,8 @@ const BASE_URL = "https://us.openrouter.ai/api/v1";
 
 const MODELS_URL = `${BASE_URL}/models`;
 
-function denyCollection(payload: RequestPayload) {
-	return { ...payload, provider: { ...payload.provider, data_collection: "deny" } };
+function enforceZeroDataRetention(payload: RequestPayload) {
+	return { ...payload, provider: { ...payload.provider, data_collection: "deny", zdr: true } };
 }
 
 export function createOpenRouterUSProvider(raw: Provider): Provider {
@@ -50,6 +50,6 @@ export function createOpenRouterUSProvider(raw: Provider): Provider {
 		baseUrl: BASE_URL,
 		getModels: () => currentModels,
 		refreshModels,
-		transform: denyCollection,
+		transform: enforceZeroDataRetention,
 	});
 }

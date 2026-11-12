@@ -18,18 +18,20 @@ function send(t, provider, model, options) {
 	return { output, fetches, request: fetches.at(-1) && { ...fetches.at(-1), body: JSON.parse(fetches.at(-1).body) } };
 }
 
-test("OpenRouter requests use the US endpoint and deny data collection without dropping routing", (t) => {
+test("OpenRouter requests use the US endpoint and enforce ZDR without dropping routing", (t) => {
 	const { request } = send(t, "openrouter", HAIKU, {
-		payload: { provider: { order: ["anthropic"], data_collection: "allow" } },
+		payload: { provider: { order: ["anthropic"], data_collection: "allow", zdr: false } },
 	});
 
 	assert.match(request.url, /^https:\/\/us\.openrouter\.ai\/api\/v1\/messages/);
-	assert.deepEqual(request.body.provider, { order: ["anthropic"], data_collection: "deny" });
+	assert.deepEqual(request.body.provider, { order: ["anthropic"], data_collection: "deny", zdr: true });
 });
 
-test("Vercel requests pin US inference and disallow prompt training without dropping gateway options", (t) => {
+test("Vercel requests pin US inference and enforce ZDR without dropping gateway options", (t) => {
 	const { request } = send(t, "vercel-ai-gateway", HAIKU, {
-		payload: { providerOptions: { gateway: { order: ["anthropic"], disallowPromptTraining: false } } },
+		payload: {
+			providerOptions: { gateway: { order: ["anthropic"], disallowPromptTraining: false, zeroDataRetention: false } },
+		},
 	});
 
 	assert.match(request.url, /^https:\/\/ai-gateway\.vercel\.sh\//);
@@ -37,6 +39,7 @@ test("Vercel requests pin US inference and disallow prompt training without drop
 		order: ["anthropic"],
 		inferenceRegion: { scope: "zone", geoRegion: "us" },
 		disallowPromptTraining: true,
+		zeroDataRetention: true,
 	});
 });
 

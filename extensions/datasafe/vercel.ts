@@ -1,6 +1,6 @@
 import type { Policy, RequestPayload } from "./guard.ts";
 
-function applyUSInferenceRegion(payload: RequestPayload) {
+function applyUSZeroDataRetention(payload: RequestPayload) {
 	const providerOptions = payload.providerOptions ?? {};
 
 	return {
@@ -11,9 +11,10 @@ function applyUSInferenceRegion(payload: RequestPayload) {
 				...providerOptions.gateway,
 				inferenceRegion: { scope: "zone", geoRegion: "us" },
 				disallowPromptTraining: true,
+				zeroDataRetention: true,
 			},
 		},
 	};
 }
 
-export const vercelUSPolicy: Policy = { transform: applyUSInferenceRegion };
+export const vercelUSPolicy: Policy = { transform: applyUSZeroDataRetention };

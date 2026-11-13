@@ -22,15 +22,6 @@ Use these mise features when setting up or auditing Ruby projects:
 
   Add `vendor/bundle/` to the repo's ignore rules. Do not store private gem source credentials in Bundler config; keep them in 1Password/fnox and use the dotfiles `bundle-private` helper when private gem credentials are needed.
 
-  Keep `hk install` as a one-shot command, or model it as a custom deps provider:
-
-  ```toml
-  [deps.hk]
-  sources = ["hk.pkl"]
-  outputs = [".git/hooks/pre-commit"]
-  run = "hk install"
-  ```
-
 ### 5. Serve URL Logging
 
 If the project has a server, prefer a `serve` mise task. The `serve` task must log the server URL within the last 10 lines of output, for example `http://localhost:4000` or `https://localhost:4000`. This makes it easy for agents and humans to discover the running app URL.
@@ -48,7 +39,7 @@ The checker runs `mise run serve` briefly and fails if the last 10 output lines 
 
 ### 6. Test Runtime
 
-The checker runs `mise run test`, measures elapsed time, and warns when it takes longer than 10 seconds. Tests should still run before commit through the normal hk `test` step.
+The checker runs `mise run test`, measures elapsed time, and warns when it takes longer than 10 seconds. CI runs the full suite.
 
 Acceptable remediations for a slow test task are:
 

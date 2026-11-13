@@ -1,7 +1,7 @@
 # Ruby projects
 ### 9. Ruby Complexity
 
-For Ruby projects, pre-commit must include a complexity check. If the project supports RuboCop, enabling `RuboCop::Cop::Metrics::PerceivedComplexity` completes this check.
+For Ruby projects, `lint` must include a complexity check. If the project supports RuboCop, enabling `RuboCop::Cop::Metrics::PerceivedComplexity` completes this check.
 
 Add a dedicated mise task named `lint:complexity`:
 
@@ -17,7 +17,7 @@ If the project does not support RuboCop, add a small custom linter that checks R
 
 ### 10. Ruby Dead Code Detection
 
-For Ruby projects, pre-commit must include dead-code detection. Use [debride](https://github.com/seattlerb/debride) and wire it to a dedicated mise task named `lint:dead-code`:
+For Ruby projects, `lint` must include dead-code detection. Use [debride](https://github.com/seattlerb/debride) and wire it to a dedicated mise task named `lint:dead-code`:
 
 ```toml
 [tasks."lint:dead-code"]
@@ -29,7 +29,7 @@ Add `debride` to the project's Ruby dependencies. Because `debride` exits 0 when
 
 ### 11. Ruby flog/flay
 
-For Ruby projects, pre-commit must include `flog` and `flay`. Add both development dependencies and fail-safe Rake tasks with explicit project source scope, class- and instance-method parsing, fail-safe output parsing, and fail-at-threshold semantics. Check flog's command status. For flay, treat a parseable total as authoritative because findings may produce a nonzero status; abort when no total can be parsed.
+For Ruby projects, `lint` must include `flog` and `flay`. Add both development dependencies and fail-safe Rake tasks with explicit project source scope, class- and instance-method parsing, fail-safe output parsing, and fail-at-threshold semantics. Check flog's command status. For flay, treat a parseable total as authoritative because findings may produce a nonzero status; abort when no total can be parsed.
 
 Expose those tasks through mise:
 
@@ -43,8 +43,6 @@ description = "Run flay duplication checks"
 run = "bundle exec rake flay"
 ```
 
-Add separate hk pre-commit steps for `lint:flog` and `lint:flay` so hk can run them in parallel with the rest of the pre-commit checks.
-
 ### 14. Dependency Preparation
 
 For Ruby projects, prefer `vendor/bundle` plus mise dependency providers over a hand-rolled `setup` task:
@@ -55,11 +53,6 @@ BUNDLE_PATH = "vendor/bundle"
 
 [deps.bundler]
 auto = true
-
-[deps.hk]
-sources = ["hk.pkl"]
-outputs = [".git/hooks/pre-commit"]
-run = "hk install"
 ```
 
-Run `mise deps` to install stale dependencies. Bundler runs automatically before `mise run` when `auto = true`; the custom hk provider remains explicit unless you also set `auto = true`.
+Run `mise deps` to install stale dependencies. Bundler runs automatically before `mise run` when `auto = true`.

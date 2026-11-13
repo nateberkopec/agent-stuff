@@ -10,6 +10,5 @@ function init_check_context
     set -g warnings
     set -g passes
     set -g mise_file ""
-    set -g hk_file ""
     set -g is_ruby_project 0
 end

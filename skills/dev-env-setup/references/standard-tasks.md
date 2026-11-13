@@ -13,7 +13,7 @@ When the project already has equivalent scripts (e.g., `npm run test`, `bundle e
 
 Keep mise task definitions short. Any task `run` block longer than 10 lines must move into a separate project script in an appropriate location, such as `bin/`, `scripts/`, or a stack-specific scripts directory. The mise task should call that script. The checker fails long task run blocks so shell logic does not accumulate in TOML.
 
-For lint and test tasks, add `sources` so mise can skip unchanged checks during pre-commit. This matters most in mixed Ruby repos where docs, config, or frontend-only commits should not rerun every Ruby lint task. Common Ruby mappings:
+For lint and test tasks, add `sources` so mise can skip unchanged checks. This matters most in mixed Ruby repos where docs, config, or frontend-only commits should not rerun every Ruby lint task. Common Ruby mappings:
 
 | Task | Good `sources` |
 |------|----------------|

@@ -1,4 +1,4 @@
-# mise, tasks, and hooks
+# mise and environment
 ### 1. mise Configuration
 
 All dev tools must be managed via mise. Choose the config file based on repo ownership:

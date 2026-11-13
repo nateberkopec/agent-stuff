@@ -1,6 +1,6 @@
 ---
 name: dev-env-setup
-description: Set up or audit Nate's standard dev environment in a project directory. Use for mise tasks, hk hooks, CI hardening, or standardized project tooling.
+description: Set up or audit Nate's standard dev environment in a project directory. Use for mise tasks, CI hardening, or standardized project tooling.
 ---
 
 # Standard dev environment
@@ -23,8 +23,8 @@ Never read or store plaintext credentials. Use fnox/1Password runtime references
 
 Read only the branch needed:
 
-- For mise and environment configuration, read [references/mise-and-hooks.md](references/mise-and-hooks.md).
-- For the standard task set, read [references/standard-tasks.md](references/standard-tasks.md); for aliases, serve behavior, and test runtime, read [references/project-commands.md](references/project-commands.md); for hooks, read [references/hk-hooks.md](references/hk-hooks.md).
+- For mise and environment configuration, read [references/mise-and-env.md](references/mise-and-env.md).
+- For the standard task set, read [references/standard-tasks.md](references/standard-tasks.md); for aliases, serve behavior, and test runtime, read [references/project-commands.md](references/project-commands.md).
 - For gitleaks, baselines, secret handling, and GitHub Actions (jactionlint, pinned actions), read [references/security-and-ci.md](references/security-and-ci.md). Baseline generation must use `--redact=75`; confirm the report contains no recovered values before committing it.
 - For Ruby dependencies, Standard, complexity, dead-code, flog, flay, and Bundler preparation, read [references/ruby-projects.md](references/ruby-projects.md).
 

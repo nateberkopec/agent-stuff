@@ -85,13 +85,13 @@ function check_mise_task_sources
                 if mise_task_has_key "$task_name" sources
                     check_pass "mise task sources: $task_name"
                 else
-                    check_warn "mise task sources: $task_name" "Add sources = [...] so mise can skip unchanged lint/test tasks during pre-commit."
+                    check_warn "mise task sources: $task_name" "Add sources = [...] so mise can skip unchanged lint/test tasks."
                 end
         end
     end
 
     if test (count $checked_tasks) -eq 0
-        check_warn "mise task sources" "Add sources = [...] to Ruby lint/test tasks so pre-commit can skip unchanged checks."
+        check_warn "mise task sources" "Add sources = [...] to Ruby lint/test tasks so mise can skip unchanged checks."
     end
 end
 

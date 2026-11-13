@@ -11,14 +11,14 @@ description = "Scan working tree for hardcoded secrets"
 run = "gitleaks dir --redact=75 --no-banner --no-color --max-target-megabytes 5 ."
 ```
 
-`gitleaks` is expected from the global mise config; the audit treats a missing `gitleaks` as a warning, not a failure, but the pre-commit task will error if it's not on PATH.
+`gitleaks` is expected from the global mise config; the audit treats a missing `gitleaks` as a warning, not a failure, but `lint:secrets` will error if it's not on PATH.
 
 Use the right command for the right scope:
 
 - `gitleaks dir .` (used here) scans the working tree, including gitignored files. This is the load-bearing scan because real secrets often live in gitignored paths like `.env`.
-- `gitleaks git` scans `git log -p` history. Useful for catching past commits but slower and out of scope for the standard pre-commit step.
+- `gitleaks git` scans `git log -p` history. Useful for catching past commits but slower and out of scope for the standard `lint:secrets` task.
 
-Always pass `--redact=75` so secret values do not end up in mise/hk output or CI logs. `--max-target-megabytes 5` skips lockfiles and binary blobs.
+Always pass `--redact=75` so secret values do not end up in mise output or CI logs. `--max-target-megabytes 5` skips lockfiles and binary blobs.
 
 **Default config:** when the audit runs without a project-level `.gitleaks.toml`, it uses the bundled `scripts/check-dev-env/gitleaks-default.toml`, which extends gitleaks' defaults and allowlists common vendored or generated directories (`node_modules/`, `.bundle/ruby/`, `vendor/bundle/`, `target/`, `dist/`, etc.). Bundler config files are intentionally scanned so private gem credentials do not settle in plaintext. Drop a project-local `.gitleaks.toml` if you need different rules.
 
@@ -37,6 +37,8 @@ gitleaks dir --redact=75 --report-path .gitleaks-baseline.json .
 The audit picks up `.gitleaks-baseline.json` automatically. Before committing it, inspect its structure without displaying findings and confirm that it contains no recovered secret values. A baseline is not inherently safe.
 
 ### 12. GitHub Actions
+
+CI is the guardrail. Every repository with a `lint` or `test` task needs a workflow job that runs `mise run lint` and `mise run test` on pull requests and on pushes to the default branch. Git hooks are optional local conveniences; never rely on them to enforce a check.
 
 Lint workflows with [jactionlint](https://jactionlint.jdx.dev) in its default profile. Pin it in the project mise `[tools]` and add a `lint:actions` task to the `lint` fan-out:
 

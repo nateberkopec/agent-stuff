@@ -29,6 +29,7 @@
 	"pi": {
 		"extensions": [
 			"./extensions/answer.ts",
+			"./extensions/bash_timeout.ts",
 			"./extensions/btw/index.ts",
 			"./extensions/cache_hit_warning.ts",
 			"./extensions/caffeinate.ts",
@@ -39,7 +40,6 @@
 			"./extensions/daybreak/index.ts",
 			"./extensions/executor-watch/index.ts",
 			"./extensions/fast-mode/index.ts",
-			"./extensions/find_timeout.ts",
 			"./extensions/goal.ts",
 			"./extensions/notify.ts",
 			"./extensions/openai-guidance/index.ts",

@@ -2,8 +2,8 @@ require "test_helper"
 require "json"
 require "shellwords"
 
-class FindTimeoutExtensionTest < Minitest::Test
-  EXTENSION = File.expand_path("../../extensions/find_timeout.ts", __dir__)
+class BashTimeoutExtensionTest < Minitest::Test
+  EXTENSION = File.expand_path("../../extensions/bash_timeout.ts", __dir__)
 
   SHOULD_MATCH = [
     "find . -type f",

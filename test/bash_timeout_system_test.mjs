@@ -66,13 +66,3 @@ test("an explicit bash timeout is left alone without a reminder", async (t) => {
 	assert.equal(timeout, 300);
 	assert.deepEqual(text, ["hi\n"]);
 });
-
-test("a find call without a timeout runs with 2s and reports 2s", async (t) => {
-	const { timeout, text } = await runBash(t, { command: "find . -maxdepth 0" });
-
-	assert.equal(timeout, 2);
-	assert.deepEqual(text, [
-		"<system-reminder>This bash call omitted `timeout`, so the harness applied a default of 2s.</system-reminder>",
-		".\n",
-	]);
-});

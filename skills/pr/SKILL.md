@@ -2,7 +2,7 @@
 name: pr
 description: "Use when writing a PR body."
 license: "MIT; copyright Matt Pocock; see ../matt-pocock-skills-LICENSE.txt"
-source: https://github.com/mattpocock/skills/blob/49dd158d1076134a641b33efb035946536778336/skills/engineering/pr/SKILL.md
+source: https://github.com/mattpocock/skills/blob/49dd158d1076134a641b33efb035946536778336/skills/engineering/pr/SKILL.md, https://www.warp.dev/merge-risk
 metadata:
   credits:
     skill: show-me
@@ -18,12 +18,20 @@ Use this template for writing the PR body:
 ```markdown
 ## Summary
 
+<one sentence summary: problem, solution>
+
 <diagram, diff-sketch, or tree>
 
 ## Evidence
 
-- **Before:** <screenshot/output/failing test run>
+<details>
+  <summary>Before</summary>
+  **Before:** <screenshot/output/failing test run>
+</details>
+<details>
+  <summary>After</summary>
   **After:** <screenshot/output/passing test run>
+</details>
 
 ## Merge Danger
 
@@ -40,13 +48,17 @@ Use this template for writing the PR body:
 
 Use ASD-STE100 Simplified Technical English, at a 10th grade reading label or less. 
 
-Use the user's domain language from `GLOSSARY.md`.
+Follow Nielsen Norman Group guidelines for scannable, readable content. Use the inverted pyramid style for each section.
 
-Do not assume the reader has any prior familiarity with this code or your conversation up to this point.
+Your theory of mind of the reader is that they are broadly familiar with the repository, but have not seen any of your context, did not read your session with the user, and needs a quick refresher on this part of the codebase. 
+
+Use the user's domain language from `GLOSSARY.md`, if present.
+
+If any section exceeds 150 words, put additional supporting content inside a `<details>` expandable block.
 
 ### Summary
 
-Pick the smallest view that makes the key point clear.
+Start with a single sentence which describes the "why" and "what".
 
 - Show logic or an algorithm as pseudocode:
 
@@ -161,8 +173,6 @@ function expandSkill(command: string): string {
 
 Place each visual next to the short text it supports. Keep only the calls, files, props, states, and boundaries needed to answer the user's current question or the options to resolve the current discussion point.
 
-You may use one of these, you may use several, it is unlikely you will use all of them. Use your judgement and don't overwhelm the user.
-
 ### Evidence
 
 Concrete evidence that the change works. Show a before and after.
@@ -176,3 +186,51 @@ Execution-based evidence is A-tier. Test results, console output. Show the exact
 Describe whether it's a one-way or two-way door. You can walk back through two-way doors, but not one-way doors. A PR that is cheap to roll back is lower risk. Changes that involve destructive actions or hard-to-reverse decisions are one-way doors.
 
 The blast radius is the potential impact or scope of the changes introduced by this PR. Consider all possibilities. Examples are layout shift, breakages for consumers, mobile responsiveness, etc.
+
+#### Risk 
+
+**Merge risk: <low-medium-high>**
+
+**<category>:** <verdict>
+<list gaps that increase risk. Use bullets, keep succinct. Include links to relevant files as needed>
+
+<details>
+<...list all categories>
+</details>
+```
+
+These are the **categories** and **verdicts** that affect risk, with descriptions of what "low risk" means:
+
+- **Alignment (poor ⚠️ / decent 👀 / good ✅):** Code aligns with the description and source issue, when present. Behavior assumptions and drive-bys must be documented.
+- **Impact (large ⚠️ / medium 👀 / small ✅):** Scope is contained and away from sensitive code paths.
+  - Consider blast radius: potential impact or scope of the changes introduced by this PR. Consider all possibilities. Examples are layout shift, breakages for consumers, mobile responsiveness, etc.
+  - Sensitive areas carry outsized risk regardless of diff size: auth, permissions, payments, PII, secrets, data migrations, dependency bumps, and infra or config changes. Flag any that are touched, and call out anything that widens access, weakens validation, or logs sensitive data.
+- **Verification (poor ⚠️ / decent 👀 / good ✅):** Behavior is verified, where applicable.
+  - Changes to the user experience **need** end-to-end proof as screenshots or recordings. Changes that could meaningfully affect performance **need** profiling. Prefer before-and-after evidence to standalone proof. When this coverage is lacking, it's a failure.
+  - Edge cases must be tested, or documented when they aren't; review the code closely and link the user to relevant code when only documentation is present.
+- **Rollback cost (high ⚠️ / medium 👀 / low ✅):** The code is reversible once merged. Consider one-way vs. two-way doors. You can walk back through two-way doors, but not one-way doors. A PR that is cheap to roll back is lower risk. Changes that involve destructive actions or hard-to-reverse decisions are one-way doors.
+- **Error detection (poor ⚠️ / decent 👀 / good ✅ / N/A ✅):** If applicable, critical flows should be monitored; If this breaks in production, someone should find out before users report it. Look for swallowed errors or fallbacks that hide breakage.
+
+Generate a risk score for merging this PR on a scale of low - medium - high.
+
+Verdicts:
+
+- ⚠️ = 3
+- 👀 = 2
+- ✅ = 1
+
+Weights:
+
+- Impact = 2x
+- Verification = 2x
+- Rollback cost = 1.5x
+- Error detection = 1x
+- Alignment = 1x
+
+Score = Σ(score × weight) / Σ(weights).
+
+- low: < 1.5
+- medium: 1.5 – < 2.25
+- high: ≥ 2.25
+
+Keep the numerical score and its calculations internal; do not include them in the output.

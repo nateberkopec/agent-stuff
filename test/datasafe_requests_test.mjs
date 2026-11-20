@@ -1,60 +1,25 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { agent, storedModel } from "./support/datasafe.mjs";
+import { agent } from "./support/datasafe.mjs";
 
-const HAIKU = "anthropic/claude-haiku-4.5";
+const FLASH = "deepseek-ai/DeepSeek-V4.1-Flash";
 
-const catalogs = () => ({
-	"models-store.json": {
-		openrouter: { models: [storedModel("openrouter", HAIKU)], checkedAt: Date.now() },
-	},
-});
+test("Baseten requests use the built-in Model APIs endpoint", (t) => {
+	const a = agent(t);
+	const { output } = a.prompt(["--provider", "baseten", "--model", FLASH]);
 
-function send(t, provider, model, options) {
-	const a = agent(t, catalogs());
-	const { output } = a.prompt(["--provider", provider, "--model", model], options);
-	const fetches = a.fetches();
-
-	return { output, fetches, request: fetches.at(-1) && { ...fetches.at(-1), body: JSON.parse(fetches.at(-1).body) } };
-}
-
-test("OpenRouter requests use the US endpoint and enforce ZDR without dropping routing", (t) => {
-	const { request } = send(t, "openrouter", HAIKU, {
-		payload: { provider: { order: ["anthropic"], data_collection: "allow", zdr: false } },
-	});
-
-	assert.match(request.url, /^https:\/\/us\.openrouter\.ai\/api\/v1\/messages/);
-	assert.deepEqual(request.body.provider, { order: ["anthropic"], data_collection: "deny", zdr: true });
-});
-
-test("Vercel requests pin US inference and enforce ZDR without dropping gateway options", (t) => {
-	const { request } = send(t, "vercel-ai-gateway", HAIKU, {
-		payload: {
-			providerOptions: { gateway: { order: ["anthropic"], disallowPromptTraining: false, zeroDataRetention: false } },
-		},
-	});
-
-	assert.match(request.url, /^https:\/\/ai-gateway\.vercel\.sh\//);
-	assert.deepEqual(request.body.providerOptions.gateway, {
-		order: ["anthropic"],
-		inferenceRegion: { scope: "zone", geoRegion: "us" },
-		disallowPromptTraining: true,
-		zeroDataRetention: true,
-	});
+	assert.doesNotMatch(output, /Datasafe blocked/);
+	assert.match(a.fetches()[0].url, /^https:\/\/inference\.baseten\.co\/v1\//);
 });
 
 test("models.json endpoint overrides cannot redirect allowed providers", (t) => {
 	const cases = [
-		["openrouter", HAIKU],
-		["vercel-ai-gateway", HAIKU],
+		["baseten", FLASH],
 		["openai", "gpt-4o-mini"],
 	];
 
 	for (const [provider, model] of cases) {
-		const a = agent(t, {
-			...catalogs(),
-			"models.json": { providers: { [provider]: { baseUrl: "https://evil.example/v1" } } },
-		});
+		const a = agent(t, { "models.json": { providers: { [provider]: { baseUrl: "https://evil.example/v1" } } } });
 
 		const { output } = a.prompt(["--provider", provider, "--model", model]);
 
@@ -63,7 +28,7 @@ test("models.json endpoint overrides cannot redirect allowed providers", (t) => 
 	}
 });
 
-test("Vertex requests require a US region over application default credentials", (t) => {
+test("Vertex requests require a US or EU region over application default credentials", (t) => {
 	const vertex = (auth) => {
 		const a = agent(t, {
 			"adc.json": { type: "service_account", project_id: "project", private_key: "not-a-key" },
@@ -86,12 +51,12 @@ test("Vertex requests require a US region over application default credentials",
 	const fromEnv = vertex();
 	const fromCredential = (location) => vertex({ GOOGLE_CLOUD_PROJECT: "project", GOOGLE_CLOUD_LOCATION: location })();
 
-	assert.match(fromEnv({ GOOGLE_CLOUD_LOCATION: "europe-west4" }), /outside a US region: europe-west4/);
-	assert.match(fromEnv({ GOOGLE_CLOUD_LOCATION: "global" }), /outside a US region: global/);
+	assert.match(fromEnv({ GOOGLE_CLOUD_LOCATION: "asia-east1" }), /outside a US or EU region: asia-east1/);
+	assert.match(fromEnv({ GOOGLE_CLOUD_LOCATION: "global" }), /outside a US or EU region: global/);
 	assert.match(fromEnv({ GOOGLE_CLOUD_API_KEY: "key", GOOGLE_CLOUD_LOCATION: "us-central1" }), /API-key mode/);
-	assert.match(fromCredential("europe-west4"), /outside a US region: europe-west4/);
+	assert.match(fromCredential("asia-east1"), /outside a US or EU region: asia-east1/);
 
-	for (const location of ["us", "us-central1"]) {
+	for (const location of ["us", "us-central1", "eu", "europe-west4"]) {
 		assert.doesNotMatch(fromEnv({ GOOGLE_CLOUD_LOCATION: location }), /Datasafe blocked/, location);
 		assert.doesNotMatch(fromCredential(location), /Datasafe blocked/, location);
 	}

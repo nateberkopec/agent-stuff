@@ -3,18 +3,18 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { Policy } from "./guard.ts";
 
-const US_REGION = /^us(?:-[a-z]+\d+)?$/;
+const US_OR_EU_REGION = /^(?:us|eu|(?:us|europe)-[a-z]+\d+)$/;
 
-function assertUSRegion(options: StreamOptions | undefined) {
+function assertUSOrEURegion(options: StreamOptions | undefined) {
 	if (options?.apiKey) throw new Error("Datasafe blocked Vertex API-key mode, which uses the global endpoint");
 
 	const location = Value.Check(Type.Object({ location: Type.String() }), options)
 		? options.location
 		: options?.env?.GOOGLE_CLOUD_LOCATION || process.env.GOOGLE_CLOUD_LOCATION;
 
-	if (!location || !US_REGION.test(location)) {
-		throw new Error(`Datasafe blocked Vertex location outside a US region: ${location ?? "unset"}`);
+	if (!location || !US_OR_EU_REGION.test(location)) {
+		throw new Error(`Datasafe blocked Vertex location outside a US or EU region: ${location ?? "unset"}`);
 	}
 }
 
-export const vertexUSPolicy: Policy = { check: assertUSRegion };
+export const vertexPolicy: Policy = { check: assertUSOrEURegion };

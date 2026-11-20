@@ -15,10 +15,10 @@ const customProvider = {
 	},
 };
 
-test("usa-no-train lists only profile providers and refuses to select others", (t) => {
+test("allowlist lists only profile providers and refuses to select others", (t) => {
 	const a = agent(t, { "models.json": customProvider });
 
-	assert.deepEqual(providersOf(a.listModels()), ["openai", "vercel-ai-gateway"]);
+	assert.deepEqual(providersOf(a.listModels()), ["baseten", "openai"]);
 
 	const { output } = a.prompt(["--provider", "anthropic", "--model", "claude-sonnet-4-6"]);
 
@@ -67,15 +67,15 @@ test("catalog updates for pinned providers stay visible and usable", (t) => {
 	assert.match(a.fetches()[0].url, /^https:\/\/api\.openai\.com\/v1\/responses/);
 });
 
-test("an unknown profile fails closed to usa-no-train", (t) => {
+test("an unknown profile fails closed to allowlist", (t) => {
 	const a = agent(t);
 
-	assert.deepEqual(providersOf(a.listModels(undefined, { mode: "not-a-profile" })), ["openai", "vercel-ai-gateway"]);
+	assert.deepEqual(providersOf(a.listModels(undefined, { mode: "not-a-profile" })), ["baseten", "openai"]);
 });
 
 test("a missing default model falls back to a model inside the profile", (t) => {
 	const expected = {
-		"usa-no-train": /^https:\/\/(api\.openai\.com|ai-gateway\.vercel\.sh)\//,
+		allowlist: /^https:\/\/(api\.openai\.com|inference\.baseten\.co)\//,
 		unrestricted: /^https:\/\//,
 	};
 

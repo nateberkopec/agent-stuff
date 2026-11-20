@@ -4,23 +4,23 @@ export interface Profile {
 	status?: string;
 }
 
-const usaNoTrain: Profile = {
-	name: "usa-no-train",
-	providers: ["openai", "claude-code", "google-vertex", "openrouter", "vercel-ai-gateway"],
+const allowlist: Profile = {
+	name: "allowlist",
+	providers: ["openai", "claude-code", "google-vertex", "baseten"],
 };
 
 const profiles = new Map<string, Profile>([
-	[usaNoTrain.name, usaNoTrain],
+	[allowlist.name, allowlist],
 	["unrestricted", { name: "unrestricted", providers: "all", status: "[WARNING: UNRESTRICTED]" }],
 ]);
 
 export function resolveProfile(mode: string | undefined): Profile {
-	if (!mode) return usaNoTrain;
+	if (!mode) return allowlist;
 
 	return (
 		profiles.get(mode) ?? {
-			...usaNoTrain,
-			status: `[WARNING: UNKNOWN DATASAFE MODE ${mode}, USING USA-NO-TRAIN]`,
+			...allowlist,
+			status: `[WARNING: UNKNOWN DATASAFE MODE ${mode}, USING ALLOWLIST]`,
 		}
 	);
 }

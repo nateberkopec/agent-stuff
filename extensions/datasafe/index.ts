@@ -1,22 +1,14 @@
-import type { Provider } from "@earendil-works/pi-ai";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
-import { type ExtensionAPI, type ExtensionContext, getAgentDir } from "@earendil-works/pi-coding-agent";
+import { type ExtensionAPI, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { pinEndpoints, type Policy } from "./guard.ts";
-import { createOpenRouterUSProvider } from "./openrouter.ts";
 import { resolveProfile } from "./profiles.ts";
-import { vercelUSPolicy } from "./vercel.ts";
-import { vertexUSPolicy } from "./vertex.ts";
+import { vertexPolicy } from "./vertex.ts";
 
-const regionalCatalogs = new Map<string, (raw: Provider) => Provider>([["openrouter", createOpenRouterUSProvider]]);
-
-const policies = new Map<string, Policy>([
-	["google-vertex", vertexUSPolicy],
-	["vercel-ai-gateway", vercelUSPolicy],
-]);
+const policies = new Map<string, Policy>([["google-vertex", vertexPolicy]]);
 
 async function configuredProviderIds(): Promise<string[]> {
 	try {
@@ -26,19 +18,6 @@ async function configuredProviderIds(): Promise<string[]> {
 	} catch (error) {
 		if (Value.Check(Type.Object({ code: Type.Literal("ENOENT") }), error)) return [];
 		throw error;
-	}
-}
-
-async function refreshRegionalCatalogs(ctx: ExtensionContext, allowed: ReadonlySet<string>) {
-	const providers = [...regionalCatalogs.keys()].filter((id) => allowed.has(id));
-
-	if (providers.length === 0) return;
-	const result = await ctx.modelRegistry.refresh({ providers, allowNetwork: false, signal: ctx.signal });
-
-	if (result.aborted) throw new Error("Datasafe could not refresh the subagent model catalog");
-
-	for (const [provider, error] of result.errors) {
-		throw new Error(`Datasafe could not refresh ${provider} before subagent launch`, { cause: error });
 	}
 }
 
@@ -54,10 +33,7 @@ export default async function datasafe(pi: ExtensionAPI) {
 	const builtins = builtinProviders();
 
 	for (const provider of builtins) {
-		const catalog = regionalCatalogs.get(provider.id);
-
 		if (!allowed.has(provider.id)) pi.registerProvider(provider.id, { models: [] });
-		else if (catalog) pi.registerProvider(catalog(provider));
 		else pi.registerProvider(provider.id, pinEndpoints(provider, policies.get(provider.id)));
 	}
 
@@ -75,9 +51,5 @@ export default async function datasafe(pi: ExtensionAPI) {
 		ctx.abort();
 
 		return null;
-	});
-
-	pi.on("tool_call", async (event, ctx) => {
-		if (event.toolName === "subagent") await refreshRegionalCatalogs(ctx, allowed);
 	});
 }

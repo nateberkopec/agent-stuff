@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
-import { spawn } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,6 +25,28 @@ const STATE_DIR = join(homedir(), ".unsloth/pi");
 const CACHE_FILE = join(STATE_DIR, "models.json");
 
 const SERVE = join(dirname(fileURLToPath(import.meta.url)), "serve");
+
+const SNAPSHOT_PREFIX = "pi-prefix-";
+
+const STALE_SNAPSHOT_MS = 5_000;
+
+const Payload = Type.Object({
+	model: Type.String(),
+	messages: Type.Array(Type.Object({ role: Type.String(), content: Type.Optional(Type.Unknown()) })),
+	tools: Type.Optional(Type.Array(Type.Unknown())),
+	max_tokens: Type.Optional(Type.Number()),
+	stream: Type.Optional(Type.Boolean()),
+	stream_options: Type.Optional(Type.Object({})),
+});
+
+type Payload = Static<typeof Payload>;
+
+interface Engine {
+	base: string;
+	key: string;
+	slotDir: string;
+	snapshot: string;
+}
 
 const Catalog = Type.Object({
 	data: Type.Array(
@@ -77,6 +100,86 @@ async function healthy(): Promise<boolean> {
 	} catch {
 		return false;
 	}
+}
+
+async function postChat(body: Payload): Promise<void> {
+	const response = await fetch(`${BASE}/v1/chat/completions`, {
+		method: "POST",
+		headers: { Authorization: `Bearer ${readFileSync(KEY_FILE, "utf8").trim()}`, "Content-Type": "application/json" },
+		body: JSON.stringify(body),
+	});
+
+	if (!response.ok) throw new Error(`Unsloth chat: HTTP ${response.status}`);
+
+	await response.arrayBuffer();
+}
+
+async function loaded(id: string): Promise<boolean> {
+	try {
+		const catalog = await getJson("/v1/models", AbortSignal.timeout(5000));
+
+		return Value.Check(Catalog, catalog) && catalog.data.some((model) => model.id === id && model.loaded === true);
+	} catch {
+		return false;
+	}
+}
+
+function findEngine(): Engine | undefined {
+	const processes = spawnSync("ps", ["-axo", "command="], { encoding: "utf8" }).stdout.split("\n");
+	const launch = processes.find((line) => line.includes("/llama-server ") && line.includes("--slot-save-path "));
+	const port = launch?.match(/--port (\d+)/)?.[1];
+	const keyFile = launch?.match(/--api-key-file (\S+)/)?.[1];
+	const slotDir = launch?.match(/--slot-save-path (\S+)/)?.[1];
+
+	if (!launch || !port || !keyFile || !slotDir) return undefined;
+
+	const flags = launch.replace(/--(port|fit-target) \d+/g, "").replace(/--api-key-file \S+/, "");
+
+	return {
+		base: `http://127.0.0.1:${port}`,
+		key: readFileSync(keyFile, "utf8").trim(),
+		slotDir,
+		snapshot: `${SNAPSHOT_PREFIX}${createHash("sha256").update(flags).digest("hex").slice(0, 12)}.bin`,
+	};
+}
+
+async function slotAction(engine: Engine, action: "save" | "restore"): Promise<boolean> {
+	const response = await fetch(`${engine.base}/slots/0?action=${action}`, {
+		method: "POST",
+		headers: { Authorization: `Bearer ${engine.key}`, "Content-Type": "application/json" },
+		body: JSON.stringify({ filename: engine.snapshot }),
+	});
+
+	await response.arrayBuffer();
+
+	return response.ok;
+}
+
+async function prime(payload: Payload): Promise<void> {
+	await postChat({ model: payload.model, messages: [{ role: "user", content: "hi" }], max_tokens: 1 });
+	const engine = findEngine();
+
+	if (!engine) return;
+
+	const restored = await slotAction(engine, "restore");
+	const firstUser = payload.messages.findIndex((message) => message.role === "user");
+	const started = Date.now();
+
+	await postChat({
+		...payload,
+		messages: payload.messages.slice(0, firstUser + 1),
+		max_tokens: 1,
+		stream: false,
+		stream_options: undefined,
+	});
+
+	if (restored && Date.now() - started < STALE_SNAPSHOT_MS) return;
+
+	for (const file of readdirSync(engine.slotDir)) {
+		if (file.startsWith(SNAPSHOT_PREFIX) && file !== engine.snapshot) rmSync(join(engine.slotDir, file));
+	}
+
+	await slotAction(engine, "save");
 }
 
 function spawnServer(): void {
@@ -196,13 +299,15 @@ export default function unsloth(pi: ExtensionAPI) {
 		await ctx.modelRegistry.refresh({ providers: [PROVIDER] });
 	});
 
-	pi.on("before_provider_request", async (_event, ctx) => {
-		if (ctx.model?.provider !== PROVIDER || (await healthy())) return;
+	pi.on("before_provider_request", async (event, ctx) => {
+		if (ctx.model?.provider !== PROVIDER || (await loaded(ctx.model.id))) return;
 
-		ctx.ui.setStatus(PROVIDER, "starting Unsloth…");
+		ctx.ui.setStatus(PROVIDER, "loading Unsloth model…");
 
 		try {
 			await ensureServer();
+
+			if (Value.Check(Payload, event.payload)) await prime(event.payload);
 		} finally {
 			ctx.ui.setStatus(PROVIDER, undefined);
 		}

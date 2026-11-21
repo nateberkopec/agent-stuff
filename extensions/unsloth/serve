@@ -7,7 +7,7 @@ key_file=$3
 base="http://127.0.0.1:$port"
 unsloth="$HOME/.local/bin/unsloth"
 
-"$unsloth" studio --api-only --disable-tools -p "$port" &
+"$unsloth" studio --api-only --disable-tools --parallel 1 -p "$port" &
 studio=$!
 
 until curl -fs -m 2 -o /dev/null "$base/api/health"; do

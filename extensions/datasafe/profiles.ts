@@ -6,8 +6,16 @@ export interface Profile {
 
 const allowlist: Profile = {
 	name: "allowlist",
-	providers: ["openai", "claude-code", "google-vertex", "baseten"],
+	providers: ["openai", "claude-code", "google-vertex", "baseten", "unsloth"],
 };
+
+const loopbackOnly = new Set(["unsloth"]);
+
+export function endpointAllowed(provider: string, baseUrl: string): boolean {
+	if (!loopbackOnly.has(provider)) return true;
+
+	return ["127.0.0.1", "localhost", "[::1]"].includes(new URL(baseUrl).hostname);
+}
 
 const profiles = new Map<string, Profile>([
 	[allowlist.name, allowlist],

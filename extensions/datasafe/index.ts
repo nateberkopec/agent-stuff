@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { pinEndpoints, type Policy } from "./guard.ts";
-import { resolveProfile } from "./profiles.ts";
+import { endpointAllowed, resolveProfile } from "./profiles.ts";
 import { vertexPolicy } from "./vertex.ts";
 
 const policies = new Map<string, Policy>([["google-vertex", vertexPolicy]]);
@@ -45,8 +45,9 @@ export default async function datasafe(pi: ExtensionAPI) {
 
 	pi.on("before_provider_request", (_event, ctx) => {
 		const provider = ctx.model?.provider;
+		const baseUrl = ctx.model?.baseUrl;
 
-		if (provider && allowed.has(provider)) return;
+		if (provider && baseUrl && allowed.has(provider) && endpointAllowed(provider, baseUrl)) return;
 		ctx.ui.notify(`Datasafe blocked ${provider ?? "an unknown provider"} outside the ${profile.name} profile`, "error");
 		ctx.abort();
 

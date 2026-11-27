@@ -6,10 +6,10 @@ export interface Profile {
 
 const allowlist: Profile = {
 	name: "allowlist",
-	providers: ["openai", "claude-code", "google-vertex", "baseten", "unsloth"],
+	providers: ["openai", "claude-code", "google-vertex", "baseten", "splash"],
 };
 
-const loopbackOnly = new Set(["unsloth"]);
+const loopbackOnly = new Set(["splash"]);
 
 export function endpointAllowed(provider: string, baseUrl: string): boolean {
 	if (!loopbackOnly.has(provider)) return true;

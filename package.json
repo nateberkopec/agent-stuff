@@ -43,8 +43,8 @@
 			"./extensions/goal.ts",
 			"./extensions/notify.ts",
 			"./extensions/openai-guidance/index.ts",
+			"./extensions/splash/index.ts",
 			"./extensions/toksec/index.ts",
-			"./extensions/unsloth/index.ts",
 			"./extensions/worktree_trust.ts"
 		],
 		"skills": [
